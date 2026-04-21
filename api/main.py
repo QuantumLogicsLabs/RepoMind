@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from api.routes import router
-from middleware.error_handler import register_error_handlers
+
+# ── App Initialization ────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="RepoMind API",
@@ -15,23 +17,37 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# ── CORS Middleware ───────────────────────────────────────────────────────────
+# Allows the HackingTheRepo web platform to call this service from the browser
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],        # Lock this down to the platform domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-register_error_handlers(app)
+# ── Global Error Handler ──────────────────────────────────────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"status": "failed", "message": str(exc)},
+    )
+
+# ── Routers ───────────────────────────────────────────────────────────────────
 
 app.include_router(router)
+
+# ── Health Endpoints ──────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Health"])
 async def root():
     return {"service": "RepoMind", "status": "running"}
 
+
 @app.get("/health", tags=["Health"])
 async def health():
-    from core.job_manager import job_manager
-    return {"status": "ok", "jobs": job_manager.stats()}
+    return {"status": "ok"}
