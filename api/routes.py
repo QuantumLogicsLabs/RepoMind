@@ -34,6 +34,10 @@ from api.errors import (
     JobNotFoundError,
 )
 
+# ✅ Temporary executor (DO NOT use agent/ folder)
+from tools.test_executor import run_test_executor
+
+
 router = APIRouter(tags=["Agent"])
 
 
@@ -42,8 +46,8 @@ router = APIRouter(tags=["Agent"])
 # =========================================================
 def process_job(job_id: str):
     """
-    Background worker that simulates job execution.
-    (Agent execution temporarily disabled as per instructor instructions)
+    Background worker that executes jobs using temporary executor.
+    This avoids using agent/ folder as per instructor instructions.
     """
     try:
         print(f"\n🚀 JOB STARTED: {job_id}")
@@ -54,14 +58,15 @@ def process_job(job_id: str):
         print("📦 Job marked as running")
 
         # -------------------------------------------------
-        # Simulated processing (agent disabled)
+        # Execute using temporary executor
         # -------------------------------------------------
-        summary = "Test summary (execution skipped as instructed)"
+        result = run_test_executor(
+            repo_url=job.repo_url,
+            instruction=job.instruction,
+        )
 
-        # -------------------------------------------------
-        # Simulated PR creation
-        # -------------------------------------------------
-        pr_url = None  # No real PR created in test mode
+        summary = result.get("summary", "No summary generated")
+        pr_url = result.get("pr_url", None)
 
         # -------------------------------------------------
         # Update job as completed
@@ -94,9 +99,8 @@ def process_job(job_id: str):
 # =========================================================
 @router.post("/run", response_model=RunResponse)
 async def run(request: RunRequest, background_tasks: BackgroundTasks):
-    """Create and start a new analysis job."""
+    """Create and start a new job."""
 
-    # Validate GitHub URL properly
     parsed = urlparse(request.repo_url)
     if parsed.netloc != "github.com":
         raise InvalidRepoURLError("Invalid GitHub URL")
@@ -122,7 +126,7 @@ async def run(request: RunRequest, background_tasks: BackgroundTasks):
 # =========================================================
 @router.get("/status/{job_id}", response_model=JobStatusResponse)
 async def status(job_id: str):
-    """Get current status of a job."""
+    """Get job status."""
 
     try:
         job = job_manager.get(job_id)
@@ -143,7 +147,7 @@ async def status(job_id: str):
 # =========================================================
 @router.post("/refine", response_model=RefineResponse)
 async def refine(request: RefineRequest, background_tasks: BackgroundTasks):
-    """Refine an existing job with new instructions."""
+    """Refine an existing job."""
 
     try:
         job = job_manager.get(request.job_id)
