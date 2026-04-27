@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from api.routes import router
+from api.errors import register_error_handlers
 
 # ── App Initialization ────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-
+register_error_handlers(app)
 app.include_router(router)
 
 # ── Health Endpoints ──────────────────────────────────────────────────────────
