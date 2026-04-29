@@ -8,6 +8,7 @@ Requires-Dist: uvicorn[standard]>=0.30.6
 Requires-Dist: pydantic>=2.8.2
 Requires-Dist: pydantic-settings>=2.4.0
 Requires-Dist: langchain>=0.2.16
+Requires-Dist: langchain-core>=0.2.38
 Requires-Dist: langchain-openai>=0.1.23
 Requires-Dist: langchain-community>=0.2.16
 Requires-Dist: openai>=1.45.0
@@ -19,6 +20,7 @@ Requires-Dist: tree-sitter>=0.23.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.3; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.24.0; extra == "dev"
+Requires-Dist: pytest-cov>=7.1.0; extra == "dev"
 Requires-Dist: black>=24.8.0; extra == "dev"
 Requires-Dist: ruff>=0.6.0; extra == "dev"
 Requires-Dist: mypy>=1.11.0; extra == "dev"
