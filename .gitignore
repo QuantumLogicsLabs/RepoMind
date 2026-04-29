@@ -1,0 +1,21 @@
+/.env
+.env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+*.db
+*.bak
+*.tmp
+*.swp
+*.swo
+*.DS_Store
+.idea/
+.vscode/
+
+# make-folder-txt
+.txtconfig
+.txtignore
+RepoMind.txt
