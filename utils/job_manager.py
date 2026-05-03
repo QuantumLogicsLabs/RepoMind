@@ -92,8 +92,5 @@ class JobManager:
             "failed": sum(1 for r in all_records if r.status == "failed"),
         }
 
-    def all_jobs(self) -> dict:
-        return {job_id: record.to_dict() for job_id, record in self._store.items()}
-
 
 job_manager = JobManager()
