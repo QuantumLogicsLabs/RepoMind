@@ -68,17 +68,16 @@ def format_commit_message(message: str, commit_type: str = "feat") -> str:
 def commit_changes(
     repo: Repo,
     message: str,
-    commit_type: str = "feat",
+    commit_type: Optional[str] = None,
 ) -> Optional[str]:
     if not repo.is_dirty(untracked_files=True):
         return None
 
     stage_all_changes(repo)
 
-    formatted_message = format_commit_message(message, commit_type)
+    formatted_message = f"{commit_type}: {message}" if commit_type else message
 
     commit = repo.index.commit(formatted_message)
-
     return commit.hexsha
 
 
