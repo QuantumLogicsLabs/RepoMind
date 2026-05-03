@@ -6,9 +6,17 @@ from github import Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 
+try:
+    from prompts.pr_description import PR_DESCRIPTION_PROMPT
+except ImportError:
+    PR_DESCRIPTION_PROMPT = (
+        "Create a professional pull request description with a summary, "
+        "changed files, and a clean diff preview."
+    )
+
 
 def build_pr_title(instruction: str, fallback: str = "chore: update repository") -> str:
-    cleaned = instruction.strip()
+    cleaned = " ".join(instruction.strip().split())
 
     if not cleaned:
         return fallback
@@ -17,7 +25,11 @@ def build_pr_title(instruction: str, fallback: str = "chore: update repository")
     if len(cleaned) > 72:
         short_title += "..."
 
-    return f"feat: {short_title}"
+    action_words = ("add", "fix", "update", "improve", "refactor", "remove", "create")
+    if short_title.lower().startswith(action_words):
+        return f"feat: {short_title}"
+
+    return f"chore: {short_title}"
 
 
 def build_pr_body(
@@ -30,7 +42,11 @@ def build_pr_body(
     body_lines = [
         "## Summary",
         "",
-        instruction.strip() or "Repository updates applied.",
+        instruction.strip() or "Repository updates were applied.",
+        "",
+        "## PR Description Guidance",
+        "",
+        PR_DESCRIPTION_PROMPT,
         "",
         "## Changed Files",
         "",
@@ -39,17 +55,20 @@ def build_pr_body(
     if files_list:
         body_lines.extend([f"- `{file_path}`" for file_path in files_list])
     else:
-        body_lines.append("- No files listed")
+        body_lines.append("- No changed files were provided.")
+
+    body_lines.extend(["", "## Diff Preview", ""])
 
     if diff_summary:
-        body_lines.extend(["", "## Diff Preview", ""])
         for file_path, diff_text in diff_summary.items():
-            preview = diff_text[:1000].strip() or "No diff content available."
+            preview = diff_text[:1200].strip() or "No diff content available."
             body_lines.append(f"### `{file_path}`")
             body_lines.append("```diff")
             body_lines.append(preview)
             body_lines.append("```")
             body_lines.append("")
+    else:
+        body_lines.append("No diff preview was provided.")
 
     return "\n".join(body_lines).strip()
 
