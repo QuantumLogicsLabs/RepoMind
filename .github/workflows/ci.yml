@@ -1,1 +1,36 @@
-run: pip install fastapi uvicorn pydantic pydantic-settings python-dotenv langchain langchain-openai langchain-community langchain-core gitpython PyGithub httpx pytest pytest-asyncio
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install fastapi uvicorn pydantic pydantic-settings python-dotenv langchain langchain-groq langchain-community langchain-core gitpython PyGithub httpx pytest pytest-asyncio
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t repomind:latest .
