@@ -58,7 +58,6 @@ def commit_changes(repo: Repo, message: str, commit_type: Optional[str] = None) 
     commit = repo.index.commit(formatted_message)
     return commit.hexsha
 
-
 def push_branch(repo: Repo, remote_name: str = "origin", branch_name: Optional[str] = None) -> None:
     current_branch = branch_name or get_current_branch(repo)
     try:
