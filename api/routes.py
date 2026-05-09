@@ -1,31 +1,14 @@
 """
 FastAPI Routes for RepoMind Agent System
 """
-
 import traceback
 from urllib.parse import urlparse
 from fastapi import APIRouter, BackgroundTasks
-
-from agent.chain import AgentChain
 from langchain_groq import ChatGroq
-
-from api.errors import (
-    InvalidRepoURLError,
-    InvalidInstructionError,
-    JobAlreadyRunningError,
-    JobNotFoundError,
-)
-
+from agent.chain import AgentChain
+from api.schemas import RunRequest, RunResponse, JobStatusResponse, RefineRequest, RefineResponse, JobStatus
+from api.errors import InvalidRepoURLError, InvalidInstructionError, JobAlreadyRunningError, JobNotFoundError
 from utils.job_manager import job_manager
-
-from api.schemas import (
-    RunRequest,
-    RunResponse,
-    JobStatusResponse,
-    RefineRequest,
-    RefineResponse,
-    JobStatus,
-)
 
 router = APIRouter(tags=["Agent"])
 
@@ -35,19 +18,10 @@ def process_job(job_id: str):
         job = job_manager.get(job_id)
         job_manager.update(job_id, status=JobStatus.running)
 
-        # Initialize LLM
         llm = ChatGroq(model="llama-3.1-8b-instant")
-
-        # Initialize Agent
         agent = AgentChain(llm=llm, tools=[])
+        result = agent.run(session_id=job_id, instruction=job.instruction)
 
-        # Run agent
-        result = agent.run(
-            session_id=job_id,
-            instruction=job.instruction
-        )
-
-        # Extract PR result from agent output
         pr_url = getattr(result, "pr_url", None)
         summary = getattr(result, "summary", None)
 
@@ -78,17 +52,13 @@ def process_job(job_id: str):
 async def run(request: RunRequest, background_tasks: BackgroundTasks):
     if urlparse(request.repo_url).netloc != "github.com":
         raise InvalidRepoURLError(request.repo_url)
-
     if not request.instruction.strip():
         raise InvalidInstructionError()
-
     job_id = job_manager.create_job(
         repo_url=request.repo_url,
         instruction=request.instruction,
     )
-
     background_tasks.add_task(process_job, job_id)
-
     return RunResponse(job_id=job_id, status=JobStatus.queued)
 
 
@@ -98,7 +68,6 @@ async def status(job_id: str):
         job = job_manager.get(job_id)
     except Exception:
         raise JobNotFoundError("Job not found")
-
     return JobStatusResponse(
         job_id=job.job_id,
         status=job.status,
@@ -114,19 +83,13 @@ async def refine(request: RefineRequest, background_tasks: BackgroundTasks):
         job = job_manager.get(request.job_id)
     except Exception:
         raise JobNotFoundError("Job not found")
-
     if job.status == JobStatus.running:
         raise JobAlreadyRunningError("Job still running")
-
     if not request.instruction.strip():
         raise InvalidInstructionError()
-
     job.instruction += f"\nRefinement: {request.instruction}"
-
     job_manager.update(request.job_id, status=JobStatus.queued)
-
     background_tasks.add_task(process_job, request.job_id)
-
     return RefineResponse(
         job_id=request.job_id,
         status=JobStatus.queued,
