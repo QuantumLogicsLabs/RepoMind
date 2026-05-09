@@ -1,13 +1,28 @@
 """
 FastAPI Routes for RepoMind Agent System
 """
+
 import traceback
 from urllib.parse import urlparse
+
 from fastapi import APIRouter, BackgroundTasks
 from langchain_groq import ChatGroq
+
 from agent.chain import AgentChain
-from api.schemas import RunRequest, RunResponse, JobStatusResponse, RefineRequest, RefineResponse, JobStatus
-from api.errors import InvalidRepoURLError, InvalidInstructionError, JobAlreadyRunningError, JobNotFoundError
+from api.errors import (
+    InvalidInstructionError,
+    InvalidRepoURLError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+)
+from api.schemas import (
+    JobStatus,
+    JobStatusResponse,
+    RefineRequest,
+    RefineResponse,
+    RunRequest,
+    RunResponse,
+)
 from utils.job_manager import job_manager
 
 router = APIRouter(tags=["Agent"])
@@ -16,12 +31,25 @@ router = APIRouter(tags=["Agent"])
 def process_job(job_id: str):
     try:
         job = job_manager.get(job_id)
-        job_manager.update(job_id, status=JobStatus.running)
 
+        job_manager.update(
+            job_id,
+            status=JobStatus.running,
+        )
+
+        # Initialize LLM
         llm = ChatGroq(model="llama-3.1-8b-instant")
-        agent = AgentChain(llm=llm, tools=[])
-        result = agent.run(session_id=job_id, instruction=job.instruction)
 
+        # Initialize Agent
+        agent = AgentChain(llm=llm, tools=[])
+
+        # Run agent
+        result = agent.run(
+            session_id=job_id,
+            instruction=job.instruction,
+        )
+
+        # Extract result
         pr_url = getattr(result, "pr_url", None)
         summary = getattr(result, "summary", None)
 
@@ -36,11 +64,13 @@ def process_job(job_id: str):
             job_manager.update(
                 job_id,
                 status=JobStatus.failed,
-                error_message=summary or "Agent completed but no PR was created.",
+                error_message=summary
+                or "Agent completed but no PR was created.",
             )
 
     except Exception as e:
         traceback.print_exc()
+
         job_manager.update(
             job_id,
             status=JobStatus.failed,
@@ -52,22 +82,31 @@ def process_job(job_id: str):
 async def run(request: RunRequest, background_tasks: BackgroundTasks):
     if urlparse(request.repo_url).netloc != "github.com":
         raise InvalidRepoURLError(request.repo_url)
+
     if not request.instruction.strip():
         raise InvalidInstructionError()
+
     job_id = job_manager.create_job(
         repo_url=request.repo_url,
         instruction=request.instruction,
     )
+
     background_tasks.add_task(process_job, job_id)
-    return RunResponse(job_id=job_id, status=JobStatus.queued)
+
+    return RunResponse(
+        job_id=job_id,
+        status=JobStatus.queued,
+    )
 
 
 @router.get("/status/{job_id}", response_model=JobStatusResponse)
 async def status(job_id: str):
     try:
         job = job_manager.get(job_id)
+
     except Exception:
         raise JobNotFoundError("Job not found")
+
     return JobStatusResponse(
         job_id=job.job_id,
         status=job.status,
@@ -78,18 +117,34 @@ async def status(job_id: str):
 
 
 @router.post("/refine", response_model=RefineResponse)
-async def refine(request: RefineRequest, background_tasks: BackgroundTasks):
+async def refine(
+    request: RefineRequest,
+    background_tasks: BackgroundTasks,
+):
     try:
         job = job_manager.get(request.job_id)
+
     except Exception:
         raise JobNotFoundError("Job not found")
+
     if job.status == JobStatus.running:
         raise JobAlreadyRunningError("Job still running")
+
     if not request.instruction.strip():
         raise InvalidInstructionError()
+
     job.instruction += f"\nRefinement: {request.instruction}"
-    job_manager.update(request.job_id, status=JobStatus.queued)
-    background_tasks.add_task(process_job, request.job_id)
+
+    job_manager.update(
+        request.job_id,
+        status=JobStatus.queued,
+    )
+
+    background_tasks.add_task(
+        process_job,
+        request.job_id,
+    )
+
     return RefineResponse(
         job_id=request.job_id,
         status=JobStatus.queued,
