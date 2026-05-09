@@ -44,14 +44,13 @@ def test_pr_tool_formats_text_correctly():
     assert title == "feat: Add a new login feature"
 
     body = build_pr_body(
-        instruction="Add a new login feature", 
+        instruction="Add a new login feature",
         changed_files=["main.py", "auth.py"]
     )
-    
-    assert "## Summary" in body
+
+    assert "Add a new login feature" in body
     assert "- `main.py`" in body
     assert "- `auth.py`" in body
-
 
 def test_github_tool_commit_changes():
     """Test the github commit function using a fake (mocked) repository."""

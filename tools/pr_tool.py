@@ -1,23 +1,26 @@
 from __future__ import annotations
-
 from typing import Dict, Iterable, Optional
-
 from github import Github
 from github.PullRequest import PullRequest
 from github.Repository import Repository
 
+try:
+    from prompts.pr_description import build_pr_description
+except ImportError:
+    build_pr_description = None
+
 
 def build_pr_title(instruction: str, fallback: str = "chore: update repository") -> str:
-    cleaned = instruction.strip()
-
+    cleaned = " ".join(instruction.strip().split())
     if not cleaned:
         return fallback
-
     short_title = cleaned[:72].strip()
     if len(cleaned) > 72:
         short_title += "..."
-
-    return f"feat: {short_title}"
+    action_words = ("add", "fix", "update", "improve", "refactor", "remove", "create")
+    if short_title.lower().startswith(action_words):
+        return f"feat: {short_title}"
+    return f"chore: {short_title}"
 
 
 def build_pr_body(
@@ -27,6 +30,17 @@ def build_pr_body(
 ) -> str:
     files_list = list(changed_files)
 
+    if build_pr_description:
+        diff_text = "\n".join(
+            f"{path}:\n{diff}" for path, diff in (diff_summary or {}).items()
+        )
+        return build_pr_description(
+            summary=instruction.strip() or "Repository updates applied.",
+            reason="Instruction provided by user through HackingTheRepo platform.",
+            changed_files=files_list,
+            diff_summary=diff_text or "No diff summary available.",
+        )
+
     body_lines = [
         "## Summary",
         "",
@@ -35,21 +49,22 @@ def build_pr_body(
         "## Changed Files",
         "",
     ]
-
     if files_list:
         body_lines.extend([f"- `{file_path}`" for file_path in files_list])
     else:
-        body_lines.append("- No files listed")
+        body_lines.append("- No changed files were provided.")
 
     if diff_summary:
         body_lines.extend(["", "## Diff Preview", ""])
         for file_path, diff_text in diff_summary.items():
-            preview = diff_text[:1000].strip() or "No diff content available."
+            preview = diff_text[:1200].strip() or "No diff content available."
             body_lines.append(f"### `{file_path}`")
             body_lines.append("```diff")
             body_lines.append(preview)
             body_lines.append("```")
             body_lines.append("")
+    else:
+        body_lines.append("\nNo diff preview was provided.")
 
     return "\n".join(body_lines).strip()
 
@@ -68,7 +83,6 @@ def create_pull_request(
     base_branch: str = "main",
 ) -> PullRequest:
     repo = get_github_repository(token, repo_full_name)
-
     return repo.create_pull(
         title=title,
         body=body,
