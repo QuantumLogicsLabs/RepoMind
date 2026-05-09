@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
 from api.main import app
@@ -44,11 +44,14 @@ def test_job_manager_lifecycle():
         job_manager.get("this_job_does_not_exist")
 
 
-@patch("api.routes.run_test_executor")
-def test_api_endpoints_integration(mock_executor):
+@patch("api.routes.AgentChain")
+def test_api_endpoints_integration(mock_agent_class):
     """Test the 3 API endpoints (/run, /status, /refine)."""
-    # Mock the heavy agent execution so the test runs instantly
-    mock_executor.return_value = {"pr_url": "https://github.com/fake/pull/2", "summary": "Done"}
+    mock_agent = mock_agent_class.return_value
+    mock_result = MagicMock()
+    mock_result.pr_url = "https://github.com/fake/pull/2"
+    mock_result.summary = "Done"
+    mock_agent.run.return_value = mock_result
 
     # 1. Test POST /run
     run_payload = {
