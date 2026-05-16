@@ -1,26 +1,14 @@
 """
 FastAPI Routes for RepoMind Agent System
 """
-
 import traceback
 from urllib.parse import urlparse
 from fastapi import APIRouter, BackgroundTasks
-from api.schemas import (
-    RunRequest,
-    RunResponse,
-    JobStatusResponse,
-    RefineRequest,
-    RefineResponse,
-    JobStatus,
-)
+from langchain_groq import ChatGroq
+from agent.chain import AgentChain
+from api.schemas import RunRequest, RunResponse, JobStatusResponse, RefineRequest, RefineResponse, JobStatus
+from api.errors import InvalidRepoURLError, InvalidInstructionError, JobAlreadyRunningError, JobNotFoundError
 from utils.job_manager import job_manager
-from api.errors import (
-    InvalidRepoURLError,
-    InvalidInstructionError,
-    JobAlreadyRunningError,
-    JobNotFoundError,
-)
-from tools.test_executor import run_test_executor
 
 router = APIRouter(tags=["Agent"])
 
@@ -29,38 +17,47 @@ def process_job(job_id: str):
     try:
         job = job_manager.get(job_id)
         job_manager.update(job_id, status=JobStatus.running)
-        result = run_test_executor(repo_url=job.repo_url, instruction=job.instruction)
 
-        pr_url = result.get("pr_url")  # may be None if no changes were made
+        llm = ChatGroq(model="llama-3.1-8b-instant")
+        agent = AgentChain(llm=llm, tools=[])
+        result = agent.run(session_id=job_id, instruction=job.instruction)
+
+        pr_url = getattr(result, "pr_url", None)
+        summary = getattr(result, "summary", None)
 
         if pr_url:
             job_manager.update(
                 job_id,
                 status=JobStatus.completed,
                 pr_url=pr_url,
-                diff_summary=result.get("summary"),
+                diff_summary=summary,
             )
         else:
-            # Agent ran successfully but made no changes → mark failed with a clear message
             job_manager.update(
                 job_id,
                 status=JobStatus.failed,
-                error_message=result.get("summary")
-                or "Agent completed but no file changes were made.",
+                error_message=summary or "Agent completed but no PR was created.",
             )
 
     except Exception as e:
         traceback.print_exc()
-        job_manager.update(job_id, status=JobStatus.failed, error_message=str(e))
+        job_manager.update(
+            job_id,
+            status=JobStatus.failed,
+            error_message=str(e),
+        )
 
 
 @router.post("/run", response_model=RunResponse)
 async def run(request: RunRequest, background_tasks: BackgroundTasks):
     if urlparse(request.repo_url).netloc != "github.com":
-        raise InvalidRepoURLError(request.repo_url)  # fix: pass the actual URL not a string literal
+        raise InvalidRepoURLError(request.repo_url)
     if not request.instruction.strip():
         raise InvalidInstructionError()
-    job_id = job_manager.create_job(repo_url=request.repo_url, instruction=request.instruction)
+    job_id = job_manager.create_job(
+        repo_url=request.repo_url,
+        instruction=request.instruction,
+    )
     background_tasks.add_task(process_job, job_id)
     return RunResponse(job_id=job_id, status=JobStatus.queued)
 
@@ -94,5 +91,7 @@ async def refine(request: RefineRequest, background_tasks: BackgroundTasks):
     job_manager.update(request.job_id, status=JobStatus.queued)
     background_tasks.add_task(process_job, request.job_id)
     return RefineResponse(
-        job_id=request.job_id, status=JobStatus.queued, message="Refinement started"
+        job_id=request.job_id,
+        status=JobStatus.queued,
+        message="Refinement started",
     )
