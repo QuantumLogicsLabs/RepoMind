@@ -21,7 +21,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 
 from agent.chain import AgentChain
 from agent.executor import FileChange, ToolSpec
@@ -170,7 +170,7 @@ def run_agent(
         )
 
         # ── 3. Build LLM + tools ──────────────────────────────────────────────
-        llm = ChatOpenAI(
+        llm = ChatGroq(
             model=settings.llm_model,
             api_key=settings.openai_api_key,
             temperature=0,
