@@ -1,13 +1,13 @@
 from unittest.mock import MagicMock, patch
 from agent.planner import TaskPlanner, Plan, PlanStep
-from agent.executor import StepExecutor, ToolSpec, ToolDecision, ExecutorOutput, StepExecutionResult, FileChange
-from agent.chain import AgentChain, ChainResult
+from agent.executor import StepExecutor, ToolSpec, ToolDecision, ExecutorOutput, StepExecutionResult
+from agent.chain import AgentChain
 from agent.memory import MemoryManager
 
 def test_planner_creates_plan():
     planner = TaskPlanner(llm=MagicMock())
     mock_plan = Plan(steps=[
-        PlanStep(id=1, task="Create a new python file", target_files=["main.py"], acceptance_criteria="File exists")
+        PlanStep(id=1, task="Create a new python file", target_function="main", new_logic="print('hello')", expected_output="File exists")
     ])
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = mock_plan
@@ -27,7 +27,7 @@ def test_executor_runs_tools():
     fake_tool = ToolSpec(name="fake_file_tool", description="A tool that edits files", fn=fake_tool_fn)
     executor = StepExecutor(llm=MagicMock(), tools=[fake_tool])
     dummy_plan = Plan(steps=[
-        PlanStep(id=1, task="Write hello world", target_files=["test.txt"], acceptance_criteria="Done")
+        PlanStep(id=1, task="Write hello world", target_function="write", new_logic="write file", expected_output="Done")
     ])
     mock_decision = ToolDecision(tool_name="fake_file_tool", tool_input={"filename": "test.txt"})
     with patch.object(executor, '_decide_tool', return_value=mock_decision):
@@ -41,7 +41,7 @@ def test_executor_runs_tools():
 def test_chain_processes_request():
     chain = AgentChain(llm=MagicMock(), tools=[])
     dummy_plan = Plan(steps=[
-        PlanStep(id=1, task="Dummy step", target_files=[], acceptance_criteria="Done")
+        PlanStep(id=1, task="Dummy step", target_function="dummy", new_logic="pass", expected_output="Done")
     ])
     dummy_execution = ExecutorOutput(
         results=[StepExecutionResult(step_id=1, step_task="Dummy step", tool_name="noop", tool_input={})],
