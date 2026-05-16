@@ -19,8 +19,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install fastapi uvicorn pydantic pydantic-settings python-dotenv langchain langchain-groq langchain-community langchain-core gitpython PyGithub httpx pytest pytest-asyncio
-
+        run: pip install fastapi uvicorn pydantic pydantic-settings python-dotenv langchain langchain-groq langchain-openai langchain-community langchain-core gitpython PyGithub httpx pytest pytest-asyncio
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
