@@ -86,7 +86,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 from langchain_groq import ChatGroq
                 from config.settings import get_settings
                 settings = get_settings()
-                gen_llm = ChatGroq(model=settings.llm_model, api_key=settings.openai_api_key, temperature=0)
+                gen_llm = ChatGroq(model=settings.llm_model, api_key=settings.groq_api_key, temperature=0)
 
                 from langchain_core.prompts import ChatPromptTemplate
                 gen_prompt = ChatPromptTemplate.from_messages([
@@ -194,7 +194,7 @@ def run_agent(
         # ── 3. Build LLM + tools ──────────────────────────────────────────────
         llm = ChatGroq(
             model=settings.llm_model,
-            api_key=settings.openai_api_key,
+            api_key=settings.groq_api_key,
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_before)
