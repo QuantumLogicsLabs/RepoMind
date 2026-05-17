@@ -53,20 +53,9 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
     """
 
     def code_editor(inputs: dict) -> dict:
-        """
-        Write one or more file changes to disk inside the cloned repo.
-
-        Expected inputs keys:
-            file_changes: list of {filename, updated_content, reason}
-
-        Returns:
-            dict with 'file_changes' (echoed back) and 'notes'.
-        """
         raw_changes: list[dict] = inputs.get("file_changes", [])
 
         if not raw_changes:
-            # Executor passes target_files + new_logic from the PlanStep —
-            # generate the change list from those fields when missing.
             filename = inputs.get("filename") or inputs.get("target_file", "")
             new_content = inputs.get("updated_content") or inputs.get("new_content", "")
             reason = inputs.get("reason", "Agent-generated change")
@@ -85,6 +74,54 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 logger.warning("code_editor: skipping change with empty filename or content.")
                 continue
 
+            # If content looks like a placeholder, use LLM to generate real content
+            placeholder_signals = ["TODO", "Add content here", "Add updated content", "update this with"]
+            is_placeholder = any(signal.lower() in updated_content.lower() for signal in placeholder_signals)
+
+            if is_placeholder or len(updated_content.strip()) < 50:
+                logger.info("code_editor: placeholder detected for %s — generating real content with LLM.", filename)
+                target = repo_path / filename
+                current_content = target.read_text(encoding="utf-8") if target.exists() else ""
+
+                from langchain_groq import ChatGroq
+                from config.settings import get_settings
+                settings = get_settings()
+                gen_llm = ChatGroq(model=settings.llm_model, api_key=settings.openai_api_key, temperature=0)
+
+                from langchain_core.prompts import ChatPromptTemplate
+                gen_prompt = ChatPromptTemplate.from_messages([
+                    ("system", (
+                        "You are an expert Python developer. "
+                        "You will be given the COMPLETE content of a Python file. "
+                        "Your job is to modify it according to the instruction and return the COMPLETE updated file. "
+                        "RULES: "
+                        "1. Return the COMPLETE file — every single line "
+                        "2. NEVER write TODO comments or placeholders "
+                        "3. Write REAL working Python code only "
+                        "4. If adding docstrings write the actual description "
+                        "5. If adding type hints use real Python types "
+                        "6. No markdown fences, just raw Python code"
+                    )),
+                    ("human", (
+                        "File: {filename}\n\n"
+                        "Current content:\n---\n{current_content}\n---\n\n"
+                        "Instruction: {instruction}\n\n"
+                        "Return the complete updated file content only."
+                    ))
+                ])
+
+                chain = gen_prompt | gen_llm
+                response = chain.invoke({
+                    "filename": filename,
+                    "current_content": current_content or "# Empty file",
+                    "instruction": reason or "Add docstrings and type hints to all functions"
+                })
+                updated_content = response.content.strip()
+                # Remove markdown fences if present
+                if updated_content.startswith("```"):
+                    lines = updated_content.split("\n")
+                    updated_content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+
             target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
@@ -99,21 +136,6 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             else "No files written — inputs were empty."
         )
         return {"file_changes": applied, "notes": notes}
-
-    return [
-        ToolSpec(
-            name="code_editor",
-            description=(
-                "Writes one or more source-file changes to the cloned repository on disk. "
-                "Use this tool for every step that needs to create or modify a file. "
-                "Provide 'file_changes' as a list of objects, each with 'filename' "
-                "(relative path from repo root), 'updated_content' (the COMPLETE new "
-                "file content), and 'reason' (one-sentence explanation)."
-            ),
-            fn=code_editor,
-        )
-    ]
-
 
 def run_agent(
     repo_url: str,
