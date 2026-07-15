@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import MagicMock, patch
 
 from tools.code_parser import parse_repository
@@ -11,20 +10,19 @@ def test_code_parser_ignores_hidden_dirs(tmp_path):
     # 1. Create a fake folder structure using pytest's built-in tmp_path feature
     (tmp_path / "main.py").write_text("print('hello')", encoding="utf-8")
     
-    # 2. Create an ignored directory and file
+    # 2. Create an ignored directory and a parsable file inside it
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
-    (git_dir / "config").write_text("secret config", encoding="utf-8")
+    (git_dir / "config.py").write_text("secret_config = True", encoding="utf-8")
 
     # 3. Run the parser on our fake folder
     parsed = parse_repository(tmp_path)
 
-    # 4. Verify main.py was read but .git/config was skipped
+    # 4. Verify main.py was read but .git/config.py was skipped
     assert "main.py" in parsed
     assert parsed["main.py"] == "print('hello')"
-    assert "config" not in parsed
-    assert ".git/config" not in parsed
-
+    assert "config.py" not in parsed
+    assert ".git/config.py" not in parsed
 
 def test_diff_generator_creates_valid_diff():
     """Test that difflib correctly identifies line changes."""

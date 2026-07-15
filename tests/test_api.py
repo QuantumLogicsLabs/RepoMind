@@ -77,7 +77,6 @@ def test_api_endpoints_integration(mock_run_agent):
 def test_api_error_handling():
     """
     Test what happens when users send bad data.
-    NOTE: This test is EXPECTED to fail because of a bug in main.py!
     """
     # Test Invalid GitHub URL (Should return 400 Bad Request)
     bad_url_resp = client.post("/run", json={"repo_url": "https://gitlab.com/test", "instruction": "test"})
