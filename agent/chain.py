@@ -63,36 +63,33 @@ class AgentChain:
             ChainResult containing the session id, original instruction,
             the generated Plan, and the full ExecutorOutput.
         """
-        # 1. Record the user's instruction in memory.
+        return self.run_with_project_map(session_id=session_id, instruction=instruction)
+
+    def run_with_project_map(
+        self,
+        session_id: str,
+        instruction: str,
+        project_map: Dict[str, Any] | None = None,
+    ) -> ChainResult:
+        """Execute one full agent turn while supplying structured repository intelligence."""
         self.memory.append_user_message(session_id, instruction)
 
-        # 2. Retrieve conversation history for this session.
         raw_context = self.memory.get_context_messages(session_id)
-
-        # 3. Prepend the system prompt so every downstream LLM call has it.
-        #    We build a fresh list each run — we never mutate memory directly.
         context_with_system = self._build_context(raw_context)
 
-        # 4. Plan — passes the enriched context so the planner knows the
-        #    full conversation history AND the RepoMind persona.
         plan = self.planner.plan(
             instruction=instruction,
             context_messages=context_with_system,
+            project_map=project_map,
         )
         self.memory.set_plan(session_id, [s.task for s in plan.steps])
 
-        # 5. Execute — the executor's _decide_tool calls already receive the
-        #    step's full detail (target_files, target_function, new_logic).
-        #    We additionally pass the enriched context via the executor's
-        #    memory_context attribute so tool prompts can reference history.
         self._inject_memory_context(context_with_system)
         execution = self.executor.execute(plan)
 
-        # 6. Mark completed steps in memory.
         for result in execution.results:
             self.memory.mark_step_completed(session_id, result.step_task)
 
-        # 7. Build a human-readable summary and store it as an AI message.
         summary = self._build_summary(plan, execution)
         self.memory.append_ai_message(session_id, summary)
 
