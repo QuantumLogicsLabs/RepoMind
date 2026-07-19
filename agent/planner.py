@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_core.language_models.chat_models import BaseChatModel
+
+from tools.code_parser import summarize_project_map
 
 MAX_PLAN_STEPS = 10
 
@@ -93,10 +95,11 @@ class TaskPlanner:
                         "   - new_logic: a precise, line-level description of what code to add/change/remove inside that function\n"
                         "   - expected_output: a concrete observable result (not 'it works')\n"
                         "   - acceptance_criteria: how a test or reviewer can confirm the step is done\n"
-                        "3. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
-                        "4. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
-                        "5. Steps must be ordered: if step B depends on step A, A must come first.\n"
-                        "6. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
+                        "3. Prioritize repository intelligence from the project map: README.md, ARCHITECTURE.md, framework configs, dependency files, and entry points should be preferred over arbitrary source files when relevant.\n"
+                        "4. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
+                        "5. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
+                        "6. Steps must be ordered: if step B depends on step A, A must come first.\n"
+                        "7. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
                         "\n"
                         "BAD step (reject this pattern):\n"
                         "  task: 'Improve the executor'\n"
@@ -118,6 +121,7 @@ class TaskPlanner:
                     "human",
                     (
                         "Conversation context (most recent {max_context_msgs} messages):\n{context}\n\n"
+                        "Repository intelligence:\n{project_map}\n\n"
                         "User instruction:\n{instruction}\n\n"
                         "Return a plan with 1-based step ids. Maximum {max_steps} steps."
                     ),
@@ -135,11 +139,22 @@ class TaskPlanner:
             lines.append(f"{role}: {msg.content}")
         return "\n".join(lines)
 
+    def _project_map_to_text(self, project_map: Optional[dict[str, Any]]) -> str:
+        """Serialize the structured project map for the planner prompt."""
+        if not project_map:
+            return "(no project map available)"
+        return summarize_project_map(project_map)
+
     def build_chain(self) -> Runnable:
         """Return the LangChain runnable for planning."""
         return self.prompt | self.llm.with_structured_output(Plan)
 
-    def plan(self, instruction: str, context_messages: list) -> Plan:
+    def plan(
+        self,
+        instruction: str,
+        context_messages: list,
+        project_map: Optional[dict[str, Any]] = None,
+    ) -> Plan:
         """
         Produce a Plan from the user's instruction and session context.
 
@@ -155,6 +170,7 @@ class TaskPlanner:
             {
                 "instruction": instruction,
                 "context": self._context_to_text(context_messages),
+                "project_map": self._project_map_to_text(project_map),
                 "max_steps": MAX_PLAN_STEPS,
                 "max_context_msgs": 12,
             }

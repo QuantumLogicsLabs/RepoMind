@@ -28,6 +28,7 @@ from agent.executor import ToolSpec
 from agent.memory import MemoryManager
 from config.settings import get_settings
 from tools.code_parser import parse_repository
+from tools.code_parser import build_project_map, get_project_readme
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
     clone_repository,
@@ -193,9 +194,21 @@ def run_agent(
         # 2. Parse repo files
         logger.info("Parsing repository files")
         repo_files_before: dict[str, str] = parse_repository(repo_path)
+        initial_project_map = build_project_map(repo_path)
+        readme_generated = False
+
+        generated_readme = get_project_readme(initial_project_map)
+        if generated_readme:
+            readme_path = repo_path / "README.md"
+            readme_path.write_text(generated_readme, encoding="utf-8")
+            logger.info("Generated README.md from repository analysis")
+            readme_generated = True
+
+        project_map = build_project_map(repo_path)
+        repo_files_for_agent: dict[str, str] = parse_repository(repo_path)
 
         file_context_lines = []
-        for rel_path, content in repo_files_before.items():
+        for rel_path, content in repo_files_for_agent.items():
             file_context_lines.append(f"\n### FILE: {rel_path}\n```\n{content}\n```")
         file_context = "\n".join(file_context_lines)
 
@@ -209,14 +222,18 @@ def run_agent(
             api_key=settings.groq_api_key,
             temperature=0,
         )
-        tools = _build_tools(repo_path, repo_files_before)
+        tools = _build_tools(repo_path, repo_files_for_agent)
 
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)
         chain = AgentChain(llm=llm, tools=tools, memory=_memory)
-        result = chain.run(session_id=session_id, instruction=enriched_instruction)
+        result = chain.run_with_project_map(
+            session_id=session_id,
+            instruction=enriched_instruction,
+            project_map=project_map,
+        )
 
-        if not result.execution.all_file_changes:
+        if not result.execution.all_file_changes and not readme_generated:
             logger.warning("Agent produced no file changes for session %s", session_id)
             return {
                 "pr_url": None,
