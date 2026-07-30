@@ -1,4 +1,4 @@
-'''Utility for selecting relevant test files based on an instruction.
+"""Utility for selecting relevant test files based on an instruction.
 
 The heuristic is deliberately simple:
 1. Only files that look like test modules (``*_test.py`` or ``test_*.py``) are considered.
@@ -6,7 +6,7 @@ The heuristic is deliberately simple:
 3. A test file is kept if **any** of those keywords appear in its path (case‑insensitive).
 
 This is sufficient for the unit‑test in the task description and can be extended later.
-'''
+"""
 
 import fnmatch
 from typing import List
@@ -38,14 +38,10 @@ def select_test_context(file_list: List[str], instruction: str) -> List[str]:
     # Step 2: filter for test‑file naming patterns
     test_patterns = ("*_test.py", "test_*.py")
     candidate_files = [
-        f for f in file_list
-        if any(fnmatch.fnmatch(f, pattern) for pattern in test_patterns)
+        f for f in file_list if any(fnmatch.fnmatch(f, pattern) for pattern in test_patterns)
     ]
 
     # Step 3: further narrow by instruction keywords appearing in the path
-    filtered = [
-        f for f in candidate_files
-        if any(kw in f.lower() for kw in keywords)
-    ]
+    filtered = [f for f in candidate_files if any(kw in f.lower() for kw in keywords)]
 
     return filtered
