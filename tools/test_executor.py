@@ -61,7 +61,7 @@ def run_test_executor(repo_url: str, instruction: str) -> dict:
     try:
         # Clone the repository (if not already present). This is a simplified
         # placeholder; the real implementation may involve more robust handling.
-        repo_name = repo_url.rstrip('.git').split('/')[-1]
+        repo_name = repo_url.rstrip(".git").split("/")[-1]
         if not os.path.isdir(repo_name):
             subprocess.run(["git", "clone", repo_url], check=True)
 
