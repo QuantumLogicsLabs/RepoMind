@@ -12,6 +12,12 @@ class JobRecord:
     pr_url: str | None = None
     diff_summary: str | None = None
     error_message: str | None = None
+    branch_name: str = "repomind/auto-fix"
+    pr_title: str = "refactor: RepoMind automated change"
+    create_pr: bool = True
+    base_branch: str = "main"
+    github_token: str | None = None
+    openai_api_key: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -31,6 +37,9 @@ class JobRecord:
             "pr_url": self.pr_url,
             "diff_summary": self.diff_summary,
             "error_message": self.error_message,
+            "branch_name": self.branch_name,
+            "pr_title": self.pr_title,
+            "create_pr": self.create_pr,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,

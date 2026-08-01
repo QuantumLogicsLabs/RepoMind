@@ -15,6 +15,7 @@ Flow:
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -194,6 +195,9 @@ def run_agent(
     branch_name: str = "repomind/auto-fix",
     pr_title_override: str | None = None,
     base_branch: str = "main",
+    create_pr: bool = True,
+    github_token: str | None = None,
+    openai_api_key: str | None = None,
 ) -> dict:
     """Full end-to-end agent run.
 
@@ -205,6 +209,10 @@ def run_agent(
         }
     """
     settings = get_settings()
+    token = github_token or settings.github_token
+    if openai_api_key:
+        # Prefer per-request key when provided (does not mutate global settings cache).
+        os.environ.setdefault("OPENAI_API_KEY", openai_api_key)
 
     with tempfile.TemporaryDirectory(prefix="repomind_") as tmp_dir:
         repo_path = Path(tmp_dir) / "repo"
@@ -213,7 +221,7 @@ def run_agent(
         logger.info("Cloning %s into %s", repo_url, repo_path)
         authenticated_url = repo_url.replace(
             "https://",
-            f"https://{settings.github_token}@",
+            f"https://{token}@",
         )
         git_repo = clone_repository(authenticated_url, repo_path)
 
@@ -291,6 +299,14 @@ def run_agent(
             f"+{lines_added} lines, -{lines_removed} lines."
         )
 
+        if not create_pr:
+            logger.info("Skipping PR creation (create_pr=False) for session %s", session_id)
+            return {
+                "pr_url": None,
+                "summary": diff_summary_text,
+                "diff_summary": diff_summary_text,
+            }
+
         # 8. Open pull request
         repo_full_name = (
             repo_url.replace("https://github.com/", "").rstrip("/").removesuffix(".git")
@@ -306,7 +322,7 @@ def run_agent(
 
         logger.info("Opening PR on %s", repo_full_name)
         pr = create_pull_request(
-            token=settings.github_token,
+            token=token,
             repo_full_name=repo_full_name,
             title=pr_title,
             body=pr_body,
@@ -320,3 +336,38 @@ def run_agent(
             "summary": diff_summary_text,
             "diff_summary": diff_summary_text,
         }
+
+
+def open_pull_request_for_job(
+    repo_url: str,
+    instruction: str,
+    branch_name: str,
+    pr_title: str,
+    base_branch: str = "main",
+    github_token: str | None = None,
+    diff_summary: str | None = None,
+) -> str:
+    """Open a PR for an already-pushed preview branch."""
+    settings = get_settings()
+    token = github_token or settings.github_token
+    repo_full_name = (
+        repo_url.replace("https://github.com/", "").rstrip("/").removesuffix(".git")
+    )
+    summary_map: dict[str, str] = {}
+    if diff_summary:
+        summary_map["summary"] = diff_summary
+    body = build_pr_body(
+        instruction=instruction,
+        changed_files=[],
+        diff_summary=summary_map,
+    )
+    pr = create_pull_request(
+        token=token,
+        repo_full_name=repo_full_name,
+        title=pr_title or build_pr_title(instruction),
+        body=body,
+        head_branch=branch_name,
+        base_branch=base_branch,
+    )
+    return pr.html_url
+

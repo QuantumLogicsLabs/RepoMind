@@ -25,6 +25,19 @@ class RunRequest(BaseModel):
     instruction: str  # Plain-English change description
     branch_name: str = "repomind/auto-fix"  # Branch that will be created for the PR
     pr_title: str = "refactor: RepoMind automated change"  # Title of the Pull Request
+    create_pr: bool = True  # When False, push branch + return diff without opening a PR
+    github_token: str | None = None  # Optional per-user override; falls back to server env
+    openai_api_key: str | None = None  # Optional per-user override; falls back to server env
+
+
+class OpenPrRequest(BaseModel):
+    """
+    POST /open-pr
+    Open a pull request for a completed preview-only job.
+    """
+
+    job_id: str
+    github_token: str | None = None
 
 
 class RefineRequest(BaseModel):
@@ -35,6 +48,8 @@ class RefineRequest(BaseModel):
 
     job_id: str  # The job to refine
     instruction: str  # Follow-up instruction e.g. "also add type hints"
+    github_token: str | None = None
+    openai_api_key: str | None = None
 
 
 # ── Response Models ───────────────────────────────────────────────────────────
@@ -74,6 +89,14 @@ class RefineResponse(BaseModel):
     job_id: str
     status: JobStatus
     message: str | None = None
+
+
+class OpenPrResponse(BaseModel):
+    """Returned from POST /open-pr after creating the pull request."""
+
+    job_id: str
+    pr_url: str
+    status: JobStatus
 
 
 # ── Internal Models ───────────────────────────────────────────────────────────

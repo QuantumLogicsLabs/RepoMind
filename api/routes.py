@@ -5,7 +5,7 @@ FastAPI Routes for RepoMind Agent System
 import traceback
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from api.errors import (
     InvalidInstructionError,
@@ -16,6 +16,8 @@ from api.errors import (
 from api.schemas import (
     JobStatus,
     JobStatusResponse,
+    OpenPrRequest,
+    OpenPrResponse,
     RefineRequest,
     RefineResponse,
     RunRequest,
@@ -23,7 +25,7 @@ from api.schemas import (
 )
 
 # ── Real agent runner (replaces the old stub test_executor) ───────────────────
-from tools.agent_runner import run_agent
+from tools.agent_runner import open_pull_request_for_job, run_agent
 from utils.job_manager import job_manager
 
 router = APIRouter(tags=["Agent"])
@@ -44,23 +46,35 @@ def process_job(job_id: str) -> None:
             session_id=job_id,  # session_id == job_id → memory persists across /refine
             branch_name=getattr(job, "branch_name", "repomind/auto-fix"),
             pr_title_override=getattr(job, "pr_title", None),
+            create_pr=getattr(job, "create_pr", True),
+            github_token=getattr(job, "github_token", None),
+            openai_api_key=getattr(job, "openai_api_key", None),
+            base_branch=getattr(job, "base_branch", "main"),
         )
 
         pr_url = result.get("pr_url")
+        summary = result.get("summary") or result.get("diff_summary")
 
         if pr_url:
             job_manager.update(
                 job_id,
                 status=JobStatus.completed,
                 pr_url=pr_url,
-                diff_summary=result.get("summary"),
+                diff_summary=summary,
+            )
+        elif summary and "no file changes" not in summary.lower() and "no disk changes" not in summary.lower():
+            # Preview-only success (or completed without PR)
+            job_manager.update(
+                job_id,
+                status=JobStatus.completed,
+                pr_url=None,
+                diff_summary=summary,
             )
         else:
-            # Agent ran successfully but produced no changes.
             job_manager.update(
                 job_id,
                 status=JobStatus.failed,
-                error_message=result.get("summary")
+                error_message=summary
                 or "Agent completed but no file changes were made.",
             )
 
@@ -81,10 +95,12 @@ async def run(request: RunRequest, background_tasks: BackgroundTasks) -> RunResp
         repo_url=request.repo_url,
         instruction=request.instruction,
     )
-    # Stash branch_name and pr_title on the job record so process_job can read them.
     record = job_manager.get(job_id)
-    record.branch_name = request.branch_name  # type: ignore[attr-defined]
-    record.pr_title = request.pr_title  # type: ignore[attr-defined]
+    record.branch_name = request.branch_name
+    record.pr_title = request.pr_title
+    record.create_pr = request.create_pr
+    record.github_token = request.github_token
+    record.openai_api_key = request.openai_api_key
 
     background_tasks.add_task(process_job, job_id)
     return RunResponse(job_id=job_id, status=JobStatus.queued)
@@ -123,8 +139,12 @@ async def refine(request: RefineRequest, background_tasks: BackgroundTasks) -> R
     if not request.instruction.strip():
         raise InvalidInstructionError()
 
-    # Append the refinement so the instruction history grows naturally.
     job.instruction += f"\nRefinement: {request.instruction}"
+    if request.github_token:
+        job.github_token = request.github_token
+    if request.openai_api_key:
+        job.openai_api_key = request.openai_api_key
+    job.create_pr = True
     job_manager.update(request.job_id, status=JobStatus.queued)
     background_tasks.add_task(process_job, request.job_id)
 
@@ -133,3 +153,38 @@ async def refine(request: RefineRequest, background_tasks: BackgroundTasks) -> R
         status=JobStatus.queued,
         message="Refinement queued — agent will run with full prior context.",
     )
+
+
+@router.post("/open-pr", response_model=OpenPrResponse)
+async def open_pr(request: OpenPrRequest) -> OpenPrResponse:
+    """Open a pull request for a completed preview-only job."""
+    try:
+        job = job_manager.get(request.job_id)
+    except Exception:
+        raise JobNotFoundError(request.job_id) from None
+
+    if job.pr_url:
+        return OpenPrResponse(
+            job_id=job.job_id,
+            pr_url=job.pr_url,
+            status=JobStatus(job.status),
+        )
+
+    if job.status != JobStatus.completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Job must be completed before opening a pull request",
+        )
+
+    token = request.github_token or job.github_token
+    pr_url = open_pull_request_for_job(
+        repo_url=job.repo_url,
+        instruction=job.instruction,
+        branch_name=job.branch_name,
+        pr_title=job.pr_title,
+        base_branch=job.base_branch,
+        github_token=token,
+        diff_summary=job.diff_summary,
+    )
+    job_manager.update(job.job_id, status=JobStatus.completed, pr_url=pr_url)
+    return OpenPrResponse(job_id=job.job_id, pr_url=pr_url, status=JobStatus.completed)
