@@ -17,12 +17,12 @@ class SessionState:
     history: InMemoryChatMessageHistory = field(default_factory=InMemoryChatMessageHistory)
     completed_steps: list[str] = field(default_factory=list)
     last_plan: list[str] = field(default_factory=list)
-
-
+ task-10-persistent-jobs
 def _estimate_message_tokens(message: BaseMessage) -> int:
     """Fast heuristic to estimate tokens in a message (approx 4 chars per token)."""
     content = str(message.content) if message.content else ""
     return len(content) // 4
+ main
 
 
 class MemoryManager:
@@ -70,6 +70,14 @@ class MemoryManager:
             del self._sessions[session_id]
 
     def get_context_messages(
+ task-10-persistent-jobs
+        self, session_id: str, max_messages: int | None = 12
+    ) -> list[BaseMessage]:
+        messages = self.get_history(session_id).messages
+        if max_messages is None or len(messages) <= max_messages:
+            return messages
+        return messages[-max_messages:]
+
         self,
         session_id: str,
         max_messages: int | None = 12,
@@ -108,3 +116,4 @@ class MemoryManager:
 
         # Reverse back to chronological order (oldest to newest)
         return list(reversed(retained_messages))
+ main

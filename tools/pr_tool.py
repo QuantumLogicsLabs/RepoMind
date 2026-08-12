@@ -169,7 +169,10 @@ def build_pr_body(
     changed_files: Iterable[str],
     diff_summary: dict[str, str] | None = None,
     file_reasons: list[str] | None = None,
+ task-10-persistent-jobs
+
     impact_report: dict[str, dict] | None = None,
+main
 ) -> str:
     """
     Build a complete, reviewer-friendly PR body.

@@ -2,12 +2,16 @@
 
 Pydantic BaseSettings for RepoMind.
 
+ task-10-persistent-jobs
+Supports both Groq (primary, free) and OpenAI (fallback) backends.
+
 Supports only Groq backend with API Key Rotation support.
 Multiple keys can be provided separated by commas to avoid 429 Rate Limits.
 
 Also provides small resolver helpers so request-scoped credentials (from
 api/schemas.RunRequest) can override the server's own defaults without
 ever being written back into Settings or logged.
+ main
 """
 
 from __future__ import annotations
@@ -15,6 +19,35 @@ from __future__ import annotations
 import os
 import threading
 from functools import lru_cache
+
+ task-10-persistent-jobs
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    # ─────────────────────────────────────────────────────────────
+    # LLM - Groq
+    # ─────────────────────────────────────────────────────────────
+    groq_api_key: str | None = None
+    llm_model: str = "llama-3.3-70b-versatile"
+
+    # ─────────────────────────────────────────────────────────────
+    # LLM - OpenAI
+    # ─────────────────────────────────────────────────────────────
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o"
+
+    # ─────────────────────────────────────────────────────────────
+    # Plan
+    # ─────────────────────────────────────────────────────────────
+    max_plan_steps: int = 10
+
+    # ─────────────────────────────────────────────────────────────
+    # GitHub
+    # ─────────────────────────────────────────────────────────────
+    github_token: str | None = None
+    github_username: str | None = None
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings
@@ -32,14 +65,18 @@ class Settings(BaseSettings):
     # ── GitHub (server-wide default; requests may override per-job) ──────────
     github_token: SecretStr | None = None
     github_username: str = ""
+ main
 
-    # ── App ───────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
+    # App
+    # ─────────────────────────────────────────────────────────────
     app_env: str = "development"
     log_level: str = "INFO"
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
 
     @property
     def parsed_groq_keys(self) -> list[str]:
@@ -47,6 +84,24 @@ class Settings(BaseSettings):
         return [k.strip() for k in self.groq_api_key.split(",") if k.strip()]
 
     @model_validator(mode="after")
+ task-10-persistent-jobs
+    def validate_settings(self) -> Settings:
+        """
+        Validate required settings after loading environment variables.
+        """
+
+        if not self.groq_api_key and not self.openai_api_key:
+            raise ValueError(
+                "At least one LLM API key must be provided " "(GROQ_API_KEY or OPENAI_API_KEY)."
+            )
+
+        if not self.github_token:
+            raise ValueError("GITHUB_TOKEN is required.")
+
+        if not self.github_username:
+            raise ValueError("GITHUB_USERNAME is required.")
+
+
     def check_groq_key(self) -> Settings:
         """Fail fast at startup if no Groq backend is configured."""
         if not self.parsed_groq_keys:
@@ -54,11 +109,17 @@ class Settings(BaseSettings):
                 "GROQ_API_KEY must be set in your environment variables. "
                 "You can provide multiple keys separated by commas."
             )
+ main
         return self
 
     @property
     def active_llm_model(self) -> str:
+ task-10-persistent-jobs
+        if self.openai_api_key:
+            return self.openai_model
+
         """Return the model name appropriate for the active backend."""
+ main
         return self.llm_model
 
     @property
@@ -120,6 +181,9 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+ task-10-persistent-jobs
+    return Settings()
+
     """Return a cached Settings instance (parsed once per process)."""
     return Settings(groq_api_key=os.getenv("GROQ_API_KEY") or "local-dev-key")
 
@@ -153,3 +217,4 @@ class GroqKeyRotator:
 
 # Global instance to be used by the agent/LLM initialisation layer
 groq_key_rotator = GroqKeyRotator()
+ main

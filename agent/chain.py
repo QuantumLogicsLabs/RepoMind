@@ -155,6 +155,7 @@ class AgentChain:
         explicit memory_context parameter to _decide_tool, remove this method.
         """
         self.executor.memory_context = context_with_system
+        self.memory_context: list = []
 
     def _build_summary(self, plan: Plan, execution: ExecutorOutput) -> str:
         """
@@ -166,8 +167,11 @@ class AgentChain:
         retried_steps = [r.step_id for r in execution.results if r.retried]
 
         lines = [
-            f"Planned {len(plan.steps)} step(s). " f"Executed {len(execution.results)} step(s)."
-        ]
+    (
+        f"Planned {len(plan.steps)} step(s). "
+        f"Executed {len(execution.results)} step(s)."
+    )
+]
 
         if retried_steps:
             lines.append(f"Steps that required a retry due to empty file_changes: {retried_steps}")

@@ -5,10 +5,19 @@ import json
 import tomllib
 from pathlib import Path
 from typing import Any
+ task-10-persistent-jobs
+
+
+ task-10-persistent-jobs
+# 1. Setup Logger for Token Profiling
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+ main
 
 from utils.logging import get_logger
 
 logger = get_logger("tools.code_parser")
+ main
 
 DEFAULT_IGNORED_DIRS = {
     ".git",
@@ -228,7 +237,7 @@ def _parse_requirements(content: str) -> list[str]:
     dependencies: list[str] = []
     for raw_line in content.splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or line.startswith("-"):
+        if not line or line.startswith(("#", "-")):
             continue
         line = line.split("#", 1)[0].strip()
         if line:
@@ -239,7 +248,7 @@ def _parse_requirements(content: str) -> list[str]:
 def _parse_pyproject(content: str) -> list[str]:
     try:
         data = tomllib.loads(content)
-    except Exception:
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError):
         return []
     dependencies: list[str] = []
     project = data.get("project", {}) or {}
@@ -262,7 +271,7 @@ def _parse_pyproject(content: str) -> list[str]:
 def _parse_package_json(content: str) -> list[str]:
     try:
         data = json.loads(content)
-    except Exception:
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError):
         return []
     dependencies: list[str] = []
     for section_name in (
@@ -280,7 +289,7 @@ def _parse_package_json(content: str) -> list[str]:
 def _parse_cargo(content: str) -> list[str]:
     try:
         data = tomllib.loads(content)
-    except Exception:
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError):
         return []
     dependencies: list[str] = []
     for section_name in ("dependencies", "dev-dependencies", "build-dependencies"):
@@ -349,24 +358,40 @@ def _detect_frameworks(files_by_path: dict[str, str]) -> list[str]:
         or "react-dom" in package_json
         or "next" in package_json
         or any(
+ task-10-persistent-jobs
+            path in lower_paths for path in ("next.config.js", "next.config.mjs", "next.config.ts")
+
             path in lower_paths for path in {"next.config.js", "next.config.mjs", "next.config.ts"}
+main
         )
     ):
         add("React")
     if "next" in package_json or any(
+ task-10-persistent-jobs
+        path in lower_paths for path in ("next.config.js", "next.config.mjs", "next.config.ts")
+
         path in lower_paths for path in {"next.config.js", "next.config.mjs", "next.config.ts"}
+ main
     ):
         add("Next.js")
     if "express" in package_json:
         add("Express")
     if "@nestjs/core" in package_json:
         add("NestJS")
+ task-10-persistent-jobs
+    if any(token in package_json for token in ('"vue"', "@vue/", "vue-router", "nuxt")):
+
     if any(token in package_json for token in ("vue", "@vue/", "vue-router", "nuxt")):
+ main
         add("Vue")
     if any(token in package_json for token in ("@angular/core", "@angular/cli", "angular")):
         add("Angular")
     if "vite" in package_json or any(
+ task-10-persistent-jobs
+        path in lower_paths for path in ("vite.config.js", "vite.config.ts", "vite.config.mjs")
+
         path in lower_paths for path in {"vite.config.js", "vite.config.ts", "vite.config.mjs"}
+ main
     ):
         add("Vite")
     if cargo:
@@ -471,10 +496,15 @@ def build_project_map(
     repo_path: str | Path,
     allowed_extensions: set[str] | None = None,
     ignored_dirs: set[str] | None = None,
+ task-10-persistent-jobs
+) -> dict[str, Any]:
+    """Build a structured project map while still collecting file contents."""
+
     target_hints: list[str] | None = None,
     max_tokens: int = 50000,
 ) -> dict[str, Any]:
     """Build a structured project map using a token-aware relevance scorer."""
+ main
     repo_root = Path(repo_path)
     extensions = allowed_extensions or DEFAULT_ALLOWED_EXTENSIONS
     ignored = ignored_dirs or DEFAULT_IGNORED_DIRS
@@ -545,10 +575,12 @@ def build_project_map(
     frameworks = _detect_frameworks(files_by_path)
     entry_points = _detect_entry_points(list(ordered_files.keys()), repo_root)
     folder_hierarchy = _scan_folder_hierarchy(repo_root, ignored)
+ task-10-persistent-jobs
+
     has_root_readme = any(
         path.lower() == "readme.md" or path.lower() == "readme" for path in files_by_path
     )
-
+ main
     generated_readme = (
         None
         if has_root_readme
@@ -571,8 +603,12 @@ def build_project_map(
         "dependency_files": sorted(set(dependency_files)),
         "dependencies": dependency_summary,
         "important_files": sorted(
+ task-10-persistent-jobs
+            set(important_files), key=lambda item: (_file_priority(item), item)
+
             set(important_files),
             key=lambda item: (_file_priority(item), item),
+main
         ),
         "entry_points": entry_points,
         "folder_hierarchy": folder_hierarchy,
@@ -638,6 +674,8 @@ def summarize_project_map(project_map: dict[str, Any]) -> str:
 def get_project_readme(project_map: dict[str, Any]) -> str | None:
     """Return generated README content when the repository does not ship one."""
     return project_map.get("generated_readme")
+ task-10-persistent-jobs
+
 
 
 def extract_python_imports(content: str, file_path: str) -> set[str]:
@@ -738,3 +776,4 @@ def analyze_plan_impact(plan_steps: list, files_by_path: dict[str, str]) -> dict
             }
 
     return impact_report
+ main

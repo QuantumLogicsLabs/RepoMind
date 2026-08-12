@@ -4,7 +4,11 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+ task-10-persistent-jobs
+from typing import Any, cast
+
 from typing import Any
+ main
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
@@ -169,12 +173,20 @@ class StepExecutor:
 
         self.tool_descriptions = tool_descriptions
 
-    # ── Internal helpers ─────────────────────────────────────────────────────
-
-    def _decide_tool(self, step: PlanStep, previous_summary: str) -> ToolDecision:
+    def _decide_tool(
+        self,
+        step: PlanStep,
+        previous_summary: str,
+    ) -> ToolDecision:
         """Ask the LLM which tool to call for this step."""
+
         chain = self.tool_prompt | self.llm.with_structured_output(ToolDecision)
+ task-10-persistent-jobs
+
+        result = chain.invoke(
+
         decision = chain.invoke(
+ main
             {
                 "tool_descriptions": self.tool_descriptions,
                 "step": json.dumps(step.model_dump(), indent=2),
@@ -185,6 +197,11 @@ class StepExecutor:
             return decision
         return ToolDecision.model_validate(decision)
 
+ task-10-persistent-jobs
+        return cast(ToolDecision, result)
+
+
+ main
     def _run_tool(self, tool: ToolSpec, tool_input: dict[str, Any]) -> dict:
         """Call a tool function and return its payload dict."""
         return tool.fn(tool_input) or {}

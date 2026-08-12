@@ -18,7 +18,10 @@ import tempfile
 import time
 from pathlib import Path
 
+ task-10-persistent-jobs
+
 import requests
+ main
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from pydantic import SecretStr
@@ -51,16 +54,27 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
         raw_changes: list[dict] = inputs.get("file_changes", [])
 
         if not raw_changes:
-            filename = inputs.get("filename") or inputs.get("target_file", "")
+            default_filename = inputs.get("filename") or inputs.get("target_file", "")
             new_content = inputs.get("updated_content") or inputs.get("new_content", "")
-            reason = inputs.get("reason", "Agent-generated change")
-            if filename and new_content:
+            default_reason = inputs.get("reason", "Agent-generated change")
+            if default_filename and new_content:
                 raw_changes = [
-                    {"filename": filename, "updated_content": new_content, "reason": reason}
+                    {
+                        "filename": default_filename,
+                        "updated_content": new_content,
+                        "reason": default_reason,
+                    }
                 ]
 
         applied: list[dict] = []
         for change in raw_changes:
+ task-10-persistent-jobs
+            filename = str(change.get("filename", ""))
+
+            updated_content = str(change.get("updated_content", ""))
+
+            reason = str(change.get("reason", default_reason))
+
             change_filename = str(change.get("filename", ""))
             updated_content = change.get("updated_content", "")
 
@@ -68,6 +82,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
                 updated_content = str(updated_content)
 
             change_reason = str(change.get("reason", "Agent change"))
+ main
 
             if not change_filename or not updated_content.strip():
                 logger.warning("code_editor: skipping change with empty filename or content.")
@@ -80,7 +95,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
                 "update this with",
                 "add your",
                 "insert here",
-            ]
+             ]
             is_placeholder = any(
                 signal.lower() in updated_content.lower() for signal in placeholder_signals
             )
@@ -88,7 +103,11 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
             if is_placeholder or len(updated_content.strip()) < 50:
                 logger.info(
                     "code_editor: placeholder detected for %s — generating real content with LLM.",
+ task-10-persistent-jobs
+                    filename,
+
                     change_filename,
+ main
                 )
                 target = repo_path / change_filename
                 current_content = target.read_text(encoding="utf-8") if target.exists() else ""
@@ -96,9 +115,13 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
+ task-10-persistent-jobs
+                    api_key=SecretStr(settings.groq_api_key or ""),
+
                     api_key=SecretStr(
                         llm_api_key
                     ),  # already rotated/resolved by resolve_llm_credentials()
+ main
                     temperature=0,
                 )
 
@@ -135,18 +158,33 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
                 chain = gen_prompt | gen_llm
                 response = chain.invoke(
                     {
+ task-10-persistent-jobs
+                        "filename": filename,
+                        "current_content": current_content or "# Empty file",
+                        "instruction": reason or "Add docstrings and type hints to all functions",
+
                         "filename": change_filename,
                         "current_content": current_content or "# Empty file",
                         "instruction": change_reason
                         or "Add docstrings and type hints to all functions",
+ main
                     }
                 )
                 content = response.content
 
                 if isinstance(content, str):
                     updated_content = content.strip()
+ task-10-persistent-jobs
+                elif isinstance(content, list):
+                    updated_content = "\n".join(
+                        part if isinstance(part, str) else str(part) for part in content
+                    ).strip()
+                else:
+                    updated_content = str(content).strip()
+
                 else:
                     updated_content = "\n".join(str(item) for item in content).strip()
+ main
 
                 if updated_content.startswith("```"):
                     lines = updated_content.split("\n")
@@ -157,6 +195,11 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
             target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
+ task-10-persistent-jobs
+            logger.info("code_editor: wrote %s (%d bytes)", filename, len(updated_content))
+            applied.append(
+                {"filename": filename, "updated_content": updated_content, "reason": reason}
+
 
             logger.info(
                 "code_editor: wrote %s (%d bytes)",
@@ -169,6 +212,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
                     "updated_content": updated_content,
                     "reason": change_reason,
                 }
+ main
             )
 
         notes = (
@@ -305,9 +349,13 @@ def run_agent(
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
+ task-10-persistent-jobs
+            api_key=SecretStr(settings.groq_api_key or ""),
+
             api_key=SecretStr(
                 resolved_llm_key
             ),  # already rotated/resolved by resolve_llm_credentials()
+ main
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_for_agent, resolved_llm_key)
@@ -374,7 +422,11 @@ def run_agent(
 
         logger.info("Opening PR on %s", repo_full_name)
         pr = create_pull_request(
+ task-10-persistent-jobs
+            token=settings.github_token or "",
+
             token=resolved_token,
+ main
             repo_full_name=repo_full_name,
             title=pr_title,
             body=pr_body,

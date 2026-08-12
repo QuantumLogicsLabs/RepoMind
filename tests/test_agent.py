@@ -111,10 +111,22 @@ def test_chain_processes_request():
             StepExecutionResult(step_id=1, step_task="Dummy step", tool_name="noop", tool_input={})
         ],
         all_file_changes=[],
+ task-10-persistent-jobs
+    )
+    with (
+    patch.object(chain.planner, "plan", return_value=dummy_plan),
+    patch.object(chain.executor, "execute", return_value=dummy_execution),
+):
+     result = chain.run(
+        session_id="session_123",
+        instruction="Do something",
+    )
+
     )
     with patch.object(chain.planner, "plan", return_value=dummy_plan):
         with patch.object(chain.executor, "execute", return_value=dummy_execution):
             result = chain.run(session_id="session_123", instruction="Do something")
+ main
     assert result.session_id == "session_123"
     assert result.plan == dummy_plan
     assert result.execution == dummy_execution
@@ -129,6 +141,17 @@ def test_chain_processes_request_with_project_map():
     dummy_plan = Plan(steps=[])
     dummy_execution = ExecutorOutput(results=[], all_file_changes=[])
 
+ task-10-persistent-jobs
+    with (
+    patch.object(chain.planner, "plan", return_value=dummy_plan) as mock_plan,
+    patch.object(chain.executor, "execute", return_value=dummy_execution),
+):
+      result = chain.run_with_project_map(
+        session_id="session_123",
+        instruction="Do something",
+        project_map={"frameworks": ["FastAPI"]},
+    )
+
     with patch.object(chain.planner, "plan", return_value=dummy_plan) as mock_plan:
         with patch.object(chain.executor, "execute", return_value=dummy_execution):
             result = chain.run_with_project_map(
@@ -136,6 +159,7 @@ def test_chain_processes_request_with_project_map():
                 instruction="Do something",
                 project_map={"frameworks": ["FastAPI"], "important_files": ["README.md"]},
             )
+ main
 
     assert result.session_id == "session_123"
     assert mock_plan.called
