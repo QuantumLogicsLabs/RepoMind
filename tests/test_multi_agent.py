@@ -11,10 +11,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from agent.coder import CoderAgent
-from agent.executor import ExecutorOutput, FileChange, ToolSpec
+from agent.executor import ExecutorOutput, FileChange
 from agent.planner import Plan, PlanStep
 from agent.reviewer import ReviewDecision, ReviewerAgent
 from agent.tester import TestDecision, TesterAgent

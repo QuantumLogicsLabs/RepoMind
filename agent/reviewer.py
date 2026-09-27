@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
@@ -95,7 +97,7 @@ class ReviewerAgent:
     def _invoke_chain(self, inputs: dict) -> ReviewDecision:
         """Build and invoke the LLM chain. Extracted for testability."""
         chain = self.prompt | self.llm.with_structured_output(ReviewDecision)
-        return chain.invoke(inputs)
+        return cast(ReviewDecision, chain.invoke(inputs))
 
     # ── public API ────────────────────────────────────────────────────────────
 

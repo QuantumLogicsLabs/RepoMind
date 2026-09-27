@@ -13,7 +13,7 @@ New in this version:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from git import GitCommandError, Repo
 
@@ -28,36 +28,39 @@ def _redact_secret(text: str, secret: str | None) -> str:
     return text.replace(secret, "***REDACTED***")
 
 
-def clone_repository(repo_url: str, local_path: str | Path) -> Repo:
+def clone_repository(repo_url: str, local_path: str | Path, branch: str | None = None) -> Repo:
     """
-    Clone a remote repository to a local path.
+    Clone a remote repository to a local path using a SHALLOW, single-branch
+    clone. RepoMind only ever needs the latest snapshot of the files (the
+    diff engine compares file content, not git history), so pulling the
+    full commit history is wasted bandwidth and disk I/O — especially on
+    large or old repos. depth=1 typically cuts clone time by 60-90%.
 
     Args:
         repo_url:   HTTPS clone URL (may include embedded token for auth).
         local_path: Destination directory — must not already exist.
+        branch:     Optional branch to clone directly. If None, clones the
+                    repo's default branch.
 
     Returns:
         An initialised GitPython Repo object.
-
-    Raises:
-        ValueError: If local_path already exists and is non-empty.
-        RuntimeError: On clone failure, with any embedded token redacted.
     """
     path = Path(local_path)
     if path.exists() and any(path.iterdir()):
         raise ValueError(f"Target path already exists and is not empty: {path}")
 
-    # If the URL has an embedded token (https://<token>@github.com/...),
-    # extract it so we can redact it from any error message below.
     embedded_token = None
     if "@" in repo_url and "://" in repo_url:
         scheme_sep = repo_url.split("://", 1)
         if len(scheme_sep) == 2 and "@" in scheme_sep[1]:
-            credential_part = scheme_sep[1].split("@", 1)[0]
-            embedded_token = credential_part or None
+            embedded_token = scheme_sep[1].split("@", 1)[0] or None
+
+    clone_kwargs: dict[str, Any] = {"depth": 1, "single_branch": True, "no_tags": True}
+    if branch:
+        clone_kwargs["branch"] = branch
 
     try:
-        return Repo.clone_from(repo_url, str(path))
+        return Repo.clone_from(repo_url, str(path), **clone_kwargs)
     except GitCommandError as exc:
         safe_message = _redact_secret(str(exc), embedded_token)
         raise RuntimeError(f"Failed to clone repository: {safe_message}") from None

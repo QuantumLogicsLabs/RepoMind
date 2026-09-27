@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # ── LLM — Groq (primary, free, fast) ─────────────────────────────────────
     # Can be a single key, or multiple keys separated by commas for rotation
     groq_api_key: str = ""
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_model: str = "openai/gpt-oss-120b"
 
     # ── Plan limits ───────────────────────────────────────────────────────────
     max_plan_steps: int = 10
