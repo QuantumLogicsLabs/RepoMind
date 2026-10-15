@@ -28,9 +28,8 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    # ── LLM — Groq (primary, free, fast) ─────────────────────────────────────
-    # Can be a single key, or multiple keys separated by commas for rotation
-    groq_api_key: str = ""
+    # ── LLM — Groq ───────────────────────────────────────────────────────────
+    groq_api_key: str
     llm_model: str = "openai/gpt-oss-120b"
 
     # ── Plan limits ───────────────────────────────────────────────────────────

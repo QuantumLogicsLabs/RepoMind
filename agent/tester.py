@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from orchestration.messages import TesterMessage
 from orchestration.task_state import TaskState
+from utils.llm import structured_output
 from utils.logging import get_logger
 
 logger = get_logger("agent.tester")
@@ -100,7 +101,7 @@ class TesterAgent:
 
     def _invoke_chain(self, inputs: dict) -> TestDecision:
         """Build and invoke the LLM chain. Extracted for testability."""
-        chain = self.prompt | self.llm.with_structured_output(TestDecision)
+        chain = self.prompt | structured_output(self.llm, TestDecision)
         return cast(TestDecision, chain.invoke(inputs))
 
     # ── public API ────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ def parse_repo(repo_url: str) -> list[str]:
         If the repository cannot be cloned for any reason.
     """
     try:
-        with tempfile.TemporaryDirectory() as tmp_path:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_path:
             # Clone the repository shallowly (depth=1) into the temporary directory.
             Repo.clone_from(repo_url, tmp_path, depth=1)
             repo_root = Path(tmp_path)

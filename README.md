@@ -28,20 +28,20 @@ RepoMind lives as a **separate, independently deployable ML service**. It is int
 
 ## Where RepoMind fits in the bigger picture
 
-```text
+```
 ┌─────────────────────────────────────────────────┐
 │              HackingTheRepo (Web Platform)       │
 │  User → describes change → selects repo → done  │
 │                                                 │
-│  Frontend (React/Next.js)                       │
-│        │                                        │
-│  Backend (Node / Django / etc.)                 │
-│        │                                        │
-│        │  POST /run   (REST API call)           │
-│        ▼                                        │
+│   Frontend (React/Next.js)                      │
+│         │                                       │
+│   Backend (Node / Django / etc.)                │
+│         │                                       │
+│         │  POST /run   (REST API call)           │
+│         ▼                                       │
 │  ┌─────────────────────────────────┐            │
 │  │        RepoMind  (this repo)    │            │
-│  │  FastAPI · LangChain · GitHub   │            │
+│  │   FastAPI · LangChain · GitHub  │            │
 │  └─────────────────────────────────┘            │
 │         │                                       │
 │         ▼                                       │
@@ -69,7 +69,7 @@ RepoMind lives as a **separate, independently deployable ML service**. It is int
 | Layer              | Technology                   |
 | ------------------ | ---------------------------- |
 | Agent Framework    | LangChain / LlamaIndex       |
-| LLM Backend        | OpenAI GPT-4o (configurable) |
+| LLM Backend        | Groq (Llama 3.3 70B)         |
 | API Server         | FastAPI + Uvicorn            |
 | GitHub Integration | PyGitHub + GitPython         |
 | Code Parsing       | Tree-sitter / AST            |
@@ -130,7 +130,7 @@ RepoMind/                          ← Project root
 
 - Python 3.11+
 - A GitHub Personal Access Token (PAT) with `repo` scope
-- An OpenAI API key (or whichever LLM backend you configure)
+- A Groq API key ([console.groq.com/keys](https://console.groq.com/keys))
 - Docker (optional, for containerised deployment)
 
 ### 1. Clone the repo
@@ -157,10 +157,10 @@ cp config/.env.example .env
 Open `.env` and fill in the required values:
 
 ```env
-OPENAI_API_KEY=sk-...
+GROQ_API_KEY=gsk_...
 GITHUB_TOKEN=ghp_...
 GITHUB_USERNAME=your-github-username
-LLM_MODEL=gpt-4o
+LLM_MODEL=openai/gpt-oss-120b
 MAX_PLAN_STEPS=15
 LOG_LEVEL=INFO
 ```
@@ -233,20 +233,6 @@ Send a follow-up instruction on an existing job to iterate on the same PR.
 {
   "job_id": "a1b2c3d4",
   "instruction": "Also add type hints to all the new async functions"
-}
-```
-
-### `GET /metrics`
-
-Return live system execution metrics snapshot (jobs, tool calls, step retries, durations, failures). See [MONITORING.md](docs/MONITORING.md) for complete monitoring documentation.
-
-**Response:**
-
-```json
-{
-  "jobs": {"total": 12, "completed": 10, "failed": 1},
-  "tools": {"total_calls": 25, "by_tool": {"code_editor": 25}},
-  "durations": {"planner_duration_seconds": {"avg_seconds": 1.54}}
 }
 ```
 
@@ -341,4 +327,3 @@ Please follow [Conventional Commits](https://www.conventionalcommits.org/) for c
 This software is licensed under the [HackingTheRepo Proprietary Software License Agreement (PPSLA v1.0)](LICENSE).
 
 Copyright © 2025 QuantumLogics Incorporated. All Rights Reserved. Unauthorized use, reproduction, modification, or distribution is strictly prohibited.
-

@@ -14,6 +14,8 @@ Flow:
 
 from __future__ import annotations
 
+import json
+import re
 import tempfile
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -53,16 +55,145 @@ logger = get_logger("tools.agent_runner")
 _memory = MemoryManager()
 
 
+_FINALISE_SYSTEM_PROMPT = (
+    "You are RepoMind, an expert senior software engineer finishing ONE file of a "
+    "multi-file change. You are given the file's CURRENT content (empty if it is new), "
+    "a DRAFT of what the change should contain, the REASON for the change, and the "
+    "other files already written in this change.\n\n"
+    "RULES:\n"
+    "1. Output the COMPLETE final file and nothing else: no markdown fences, no commentary.\n"
+    "2. If the file already has content, keep it unless the change replaces it. Never drop "
+    "unrelated sections, code or configuration.\n"
+    "3. Treat the draft as intent. Fix and improve it. Never leave placeholders or TODOs.\n"
+    "4. Stay consistent with the other files: reuse the exact ids, classes, function names "
+    "and paths they define, and only link to files that exist or are created in this change.\n"
+    "5. Write in the language of the file. For web pages: semantic HTML, responsive CSS "
+    "(include a mobile breakpoint), accessible markup, a viewport meta tag and working "
+    "in-page anchors.\n"
+    "6. Web copy must be substantial: every section gets real, well-written paragraphs "
+    "and concrete items (for example, each program gets a name, a short description "
+    "and who it is for). Never ship a one-line section or lorem ipsum.\n"
+    "7. Use only facts from the user's request. Where facts are thin, expand with "
+    "truthful general framing (what the work is, who it helps, how it works). Do NOT "
+    "invent statistics, names, dates, addresses, partners, testimonials, legal status, "
+    "accreditation or claims about who built or reviews the content. Where the request "
+    "names no concrete items (such as which programs exist), give a few clearly "
+    "illustrative examples. For contact details use an obvious placeholder such as "
+    "hello@example.org. Never hard-code the current year; compute it in JavaScript.\n"
+    "8. For Python: valid syntax, existing style, meaningful docstrings, real type hints."
+)
+
+_FINALISE_HUMAN_PROMPT = (
+    "File: {filename}\n\n"
+    "Current content:\n---\n{current_content}\n---\n\n"
+    "Draft of the change:\n---\n{draft}\n---\n\n"
+    "Overall user request (the whole change):\n{request}\n\n"
+    "Reason for this file: {reason}\n\n"
+    "Other files in this change:\n{siblings}\n\n"
+    "Return the complete final content of {filename} only."
+)
+
+_MAX_CONTEXT_CHARS = 30_000
+_MAX_SIBLING_CHARS = 6_000
+
+
+def _normalise_changes(raw_changes: object) -> list[dict]:
+    """Coerce the model's ``file_changes`` argument into a list of dicts.
+
+    Models sometimes send a single dict, a JSON string, or a list that mixes
+    objects and JSON strings. Anything that cannot be understood is dropped.
+    """
+    if isinstance(raw_changes, (str, dict)):
+        raw_changes = [raw_changes]
+    if not isinstance(raw_changes, list):
+        return []
+
+    changes: list[dict] = []
+    for item in raw_changes:
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                logger.warning("code_editor: ignoring unparseable file change: %.80s", item)
+                continue
+        if isinstance(item, dict):
+            changes.append(item)
+        else:
+            logger.warning("code_editor: ignoring file change of type %s.", type(item).__name__)
+    return changes
+
+
+def _line_retention(old: str, new: str) -> float:
+    """Fraction of the old file's non-blank lines that are still present in the new one."""
+    old_lines = [line.strip() for line in old.splitlines() if line.strip()]
+    if not old_lines:
+        return 1.0
+    new_lines = {line.strip() for line in new.splitlines()}
+    return sum(line in new_lines for line in old_lines) / len(old_lines)
+
+
+def _finalise_file(
+    llm_api_key: str,
+    filename: str,
+    current_content: str,
+    draft: str,
+    reason: str,
+    siblings: dict[str, str],
+    request: str = "",
+) -> str:
+    """Ask the LLM for the final content of one file, or "" if that fails."""
+    sibling_text = (
+        "\n\n".join(
+            f"=== {name} ===\n{body[:_MAX_SIBLING_CHARS]}"
+            for name, body in siblings.items()
+            if name != filename
+        )
+        or "(none yet)"
+    )
+    prompt = ChatPromptTemplate.from_messages(
+        [("system", _FINALISE_SYSTEM_PROMPT), ("human", _FINALISE_HUMAN_PROMPT)]
+    )
+    llm = ChatGroq(
+        model=get_settings().llm_model,
+        api_key=SecretStr(llm_api_key),  # already rotated/resolved by resolve_llm_credentials()
+        temperature=0,
+    )
+    try:
+        response = (prompt | llm).invoke(
+            {
+                "filename": filename,
+                "current_content": current_content[:_MAX_CONTEXT_CHARS] or "(empty: new file)",
+                "draft": draft[:_MAX_CONTEXT_CHARS] or "(no draft: write it from the reason)",
+                "reason": reason or "Improve this file",
+                "request": request or "(not provided)",
+                "siblings": sibling_text,
+            }
+        )
+    except Exception:  # noqa: BLE001 - fall back to the model's own draft
+        logger.exception("code_editor: finalising %s failed; using the draft.", filename)
+        return ""
+
+    content = response.content
+    text = content if isinstance(content, str) else "\n".join(str(item) for item in content)
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    return text.strip() + "\n" if text.strip() else ""
+
+
 def _build_tools(
     repo_path: Path,
     repo_files: dict[str, str],
     llm_api_key: str,
     code_graph: CodeGraph | None = None,
+    instruction: str = "",
 ) -> list[ToolSpec]:
     """Build the ToolSpec list that the executor will choose from."""
+    written_this_run: dict[str, str] = {}
 
     def code_editor(inputs: dict) -> dict:
-        raw_changes: list[dict] = inputs.get("file_changes", [])
+        raw_changes = _normalise_changes(inputs.get("file_changes", []))
 
         if not raw_changes:
             filename = inputs.get("filename") or inputs.get("target_file", "")
@@ -87,88 +218,67 @@ def _build_tools(
                 logger.warning("code_editor: skipping change with empty filename or content.")
                 continue
 
+            target = (repo_path / change_filename).resolve()
+            if not target.is_relative_to(repo_path.resolve()):
+                logger.warning("code_editor: refusing to write outside repo: %s", change_filename)
+                continue
+
+            current_content = target.read_text(encoding="utf-8") if target.exists() else ""
             placeholder_signals = [
-                "TODO",
                 "Add content here",
                 "Add updated content",
                 "update this with",
-                "add your",
                 "insert here",
             ]
-            is_placeholder = any(
+            is_placeholder = bool(re.search(r"\bTODO\b", updated_content)) or any(
                 signal.lower() in updated_content.lower() for signal in placeholder_signals
             )
 
-            if is_placeholder or len(updated_content.strip()) < 50:
-                logger.info(
-                    "code_editor: placeholder detected for %s — generating real content with LLM.",
+            # The model that chose this tool never saw the existing file or the
+            # other files in this change, so its draft can clobber existing
+            # content or disagree with sibling files (ids, classes, paths). A
+            # final generation pass sees all of that and writes the real file.
+            logger.info("code_editor: finalising %s with the LLM.", change_filename)
+            finalised = _finalise_file(
+                llm_api_key=llm_api_key,
+                filename=change_filename,
+                current_content=current_content,
+                draft="" if is_placeholder else updated_content,
+                reason=change_reason,
+                siblings=written_this_run,
+                request=instruction,
+            )
+            if finalised:
+                updated_content = finalised
+
+            if current_content.strip() and _line_retention(current_content, updated_content) < 0.5:
+                logger.warning(
+                    "code_editor: %s dropped most of its existing content; retrying once.",
                     change_filename,
                 )
-                target = repo_path / change_filename
-                current_content = target.read_text(encoding="utf-8") if target.exists() else ""
-
-                settings = get_settings()
-                gen_llm = ChatGroq(
-                    model=settings.llm_model,
-                    api_key=SecretStr(
-                        llm_api_key
-                    ),  # already rotated/resolved by resolve_llm_credentials()
-                    temperature=0,
+                retried = _finalise_file(
+                    llm_api_key=llm_api_key,
+                    filename=change_filename,
+                    current_content=current_content,
+                    draft=updated_content,
+                    reason=(
+                        f"{change_reason}\nIMPORTANT: a previous attempt deleted existing content. "
+                        "Keep EVERY existing line of the current file exactly as it is and only "
+                        "add or change what this change needs."
+                    ),
+                    siblings=written_this_run,
+                    request=instruction,
                 )
-
-                gen_prompt = ChatPromptTemplate.from_messages(
-                    [
-                        (
-                            "system",
-                            (
-                                "You are an expert Python developer. "
-                                "You will be given the COMPLETE content of a Python file. "
-                                "Your job is to modify it according to the instruction and return the COMPLETE updated file. "
-                                "STRICT RULES: "
-                                "1. Return the COMPLETE file — every single line, nothing omitted. "
-                                "2. NEVER write TODO comments or placeholders. "
-                                "3. Write REAL working Python code only. "
-                                "4. If adding docstrings, write the actual meaningful description of what the function does. "
-                                "5. If adding type hints, use real Python types like str, int, float, list, dict, bool, Optional. "
-                                "6. No markdown fences, just raw Python code. "
-                                "7. Copy all unchanged lines exactly as they are."
-                            ),
-                        ),
-                        (
-                            "human",
-                            (
-                                "File: {filename}\n\n"
-                                "Current content:\n---\n{current_content}\n---\n\n"
-                                "Instruction: {instruction}\n\n"
-                                "Return the complete updated file content only. No explanations."
-                            ),
-                        ),
-                    ]
-                )
-
-                chain = gen_prompt | gen_llm
-                response = chain.invoke(
-                    {
-                        "filename": change_filename,
-                        "current_content": current_content or "# Empty file",
-                        "instruction": change_reason
-                        or "Add docstrings and type hints to all functions",
-                    }
-                )
-                content = response.content
-
-                if isinstance(content, str):
-                    updated_content = content.strip()
+                if retried and _line_retention(current_content, retried) >= 0.5:
+                    updated_content = retried
                 else:
-                    updated_content = "\n".join(str(item) for item in content).strip()
-
-                if updated_content.startswith("```"):
-                    lines = updated_content.split("\n")
-                    updated_content = "\n".join(
-                        lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+                    logger.warning(
+                        "code_editor: %s still loses existing content; keeping the original.",
+                        change_filename,
                     )
+                    continue
+            written_this_run[change_filename] = updated_content
 
-            target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
 
@@ -309,7 +419,7 @@ def run_agent(
     # Validate before doing any real work — fail fast, not partway through.
     validate_credentials(resolved_token, resolved_provider, resolved_llm_key)
 
-    with tempfile.TemporaryDirectory(prefix="repomind_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="repomind_", ignore_cleanup_errors=True) as tmp_dir:
         repo_path = Path(tmp_dir) / "repo"
 
         # 1. Clone
@@ -385,7 +495,9 @@ def run_agent(
             ),  # already rotated/resolved by resolve_llm_credentials()
             temperature=0,
         )
-        tools = _build_tools(repo_path, repo_files_for_agent, resolved_llm_key, code_graph)
+        tools = _build_tools(
+            repo_path, repo_files_for_agent, resolved_llm_key, code_graph, instruction
+        )
 
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)

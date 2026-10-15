@@ -11,6 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from agent.planner import Plan, PlanStep
+from utils.llm import structured_output
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
 
@@ -229,7 +230,7 @@ class StepExecutor:
         payload is large (e.g. a full file's contents embedded as a string).
         Retry a few times before giving up, since this is usually transient.
         """
-        chain = self.tool_prompt | self.llm.with_structured_output(ToolDecision)
+        chain = self.tool_prompt | structured_output(self.llm, ToolDecision)
         last_error: Exception | None = None
         for attempt in range(1, 4):  # up to 3 attempts
             try:

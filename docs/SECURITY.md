@@ -17,7 +17,7 @@ RepoMind is an AI agent that clones repositories, writes code, and opens pull re
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report privately by emailing: **security@hackingtherepo.dev**
+Report privately by emailing: **security@hackingt​herepo.dev**
 
 Include as much of the following as possible:
 
@@ -79,3 +79,27 @@ We monitor dependencies via GitHub Dependabot. To audit locally:
 ```bash
 pip install pip-audit
 pip-audit
+```
+
+---
+
+## Disclosure Policy
+
+We follow **coordinated disclosure**:
+
+1. Reporter notifies us privately.
+2. We confirm, reproduce, and develop a fix.
+3. We release the fix and credit the reporter (unless anonymity is requested).
+4. Details are published in the release notes after users have had time to update.
+
+---
+
+## Hall of Fame
+
+Researchers who have responsibly disclosed issues will be credited here.
+
+*No disclosures yet — be the first!*
+
+---
+
+_RepoMind — AI-powered code editing, responsibly._

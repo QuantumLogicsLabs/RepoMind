@@ -21,3 +21,6 @@ __pycache__
 .txtignore
 RepoMind.txt
 *.egg-info/
+
+# RepoMind runtime memory
+.repomind_memory/

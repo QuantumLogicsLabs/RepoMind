@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from tools.code_graph import CodeGraph, summarize_code_graph
 from tools.code_parser import summarize_project_map
+from utils.llm import structured_output
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
 
@@ -110,7 +111,11 @@ class TaskPlanner:
             "4. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
             "5. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
             "6. Steps must be ordered: if step B depends on step A, A must come first.\n"
-            "7. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
+            "7. Each step edits ONE logical unit (one function or one class, or one whole file when creating a page or document). Split larger changes across multiple steps.\n"
+            "8. new_logic must DESCRIBE the change in prose. NEVER paste a whole file or large code blocks into it: "
+            "a later step writes the real content. For new pages or documents, list the sections, the content points of each, "
+            "and the exact ids, class names and file names other files must share (for example the HTML ids a stylesheet targets).\n"
+            "9. When a file already exists, plan a minimal edit that keeps its existing content; never plan to replace a file wholesale unless asked.\n"
             "\n"
             "BAD step (reject this pattern):\n"
             "  task: 'Improve the executor'\n"
@@ -170,7 +175,22 @@ class TaskPlanner:
 
     def build_chain(self) -> Runnable:
         """Return the LangChain runnable for planning."""
-        return self.prompt | self.llm.with_structured_output(Plan)
+        return self.prompt | structured_output(self.llm, Plan)
+
+    def _invoke_with_retry(self, chain: Runnable, payload: dict[str, Any], attempts: int = 3) -> Plan:
+        """Invoke the planning chain, retrying transient structured-output failures."""
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                result = chain.invoke(payload)
+                return result if isinstance(result, Plan) else Plan.model_validate(result)
+            except Exception as exc:  # noqa: BLE001 - malformed JSON, tool_use_failed, etc.
+                last_error = exc
+                logger.warning(
+                    f"Planner attempt {attempt}/{attempts} failed: {exc}",
+                    extra={"event": "planner_retry", "attempt": attempt},
+                )
+        raise last_error if last_error else RuntimeError("Planner failed")
 
     def plan(
         self,
@@ -208,7 +228,7 @@ class TaskPlanner:
             },
         )
         chain = self.build_chain()
-        generated_plan: Plan = chain.invoke(
+        payload = (
             {
                 "instruction": instruction,
                 "context": self._context_to_text(context_messages),
@@ -220,6 +240,7 @@ class TaskPlanner:
                 "max_context_msgs": 12,
             }
         )
+        generated_plan = self._invoke_with_retry(chain, payload)
 
         duration_sec = time.perf_counter() - start_time
         metrics_collector.record_plan_generated(len(generated_plan.steps))
