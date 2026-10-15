@@ -20,3 +20,4 @@ __pycache__
 .txtconfig
 .txtignore
 RepoMind.txt
+*.egg-info/

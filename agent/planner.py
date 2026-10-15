@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -7,7 +8,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field, field_validator
 
+from tools.code_graph import CodeGraph, summarize_code_graph
 from tools.code_parser import summarize_project_map
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
+
+logger = get_logger("agent.planner")
 
 MAX_PLAN_STEPS = 10
 
@@ -74,54 +80,65 @@ class TaskPlanner:
     and the expected observable output — so the executor never has to guess.
     """
 
-    def __init__(self, llm: BaseChatModel) -> None:
+    def __init__(self, llm: BaseChatModel, extra_instructions: list[str] | None = None) -> None:
         self.llm = llm
+        self.extra_instructions: list[str] = extra_instructions or []
+        self._build_prompt()
+
+    def _build_prompt(self) -> None:
+        plugin_section = ""
+        if self.extra_instructions:
+            formatted = "\n".join(f"- {inst}" for inst in self.extra_instructions)
+            plugin_section = f"\n\nADDITIONAL PLUGIN INSTRUCTIONS:\n{formatted}\n"
+
+        system_text = (
+            "You are a senior software engineer acting as a code-edit planner for the RepoMind AI agent.\n"
+            "\n"
+            "Your job is to decompose the user's instruction into an ordered list of CONCRETE implementation steps.\n"
+            "Each step will be executed independently by a code-generation LLM that has NO memory of previous steps.\n"
+            "Therefore every step must be 100 % self-contained and unambiguous.\n"
+            "\n"
+            "STRICT RULES:\n"
+            "1. MAXIMUM {max_steps} steps. If the task needs more, find the minimal subset that achieves the goal.\n"
+            "2. Every step MUST specify:\n"
+            "   - target_files: exact file path(s) relative to the repo root, e.g. 'agent/executor.py'\n"
+            "   - target_function: the exact function or class.method name to touch, e.g. 'StepExecutor.execute'\n"
+            "   - new_logic: a precise, line-level description of what code to add/change/remove inside that function\n"
+            "   - expected_output: a concrete observable result (not 'it works')\n"
+            "   - acceptance_criteria: how a test or reviewer can confirm the step is done\n"
+            "3. Prioritize repository intelligence from the project map: README.md, ARCHITECTURE.md, framework configs, dependency files, and entry points should be preferred over arbitrary source files when relevant.\n"
+            "4. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
+            "5. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
+            "6. Steps must be ordered: if step B depends on step A, A must come first.\n"
+            "7. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
+            "\n"
+            "BAD step (reject this pattern):\n"
+            "  task: 'Improve the executor'\n"
+            "  target_files: ['agent/']\n"
+            "  new_logic: 'Make it better'\n"
+            "\n"
+            "GOOD step (follow this pattern):\n"
+            "  task: 'Add retry logic to StepExecutor.execute when file_changes is empty'\n"
+            "  target_files: ['agent/executor.py']\n"
+            "  target_function: 'StepExecutor.execute'\n"
+            '  new_logic: \'After tool.fn() returns payload, check if payload["file_changes"] is empty. '
+            "If so, call tool.fn(decision.tool_input) a second time. Use the second result regardless.'\n"
+            "  expected_output: 'execute() calls the tool twice when the first call returns no file_changes'\n"
+            "  acceptance_criteria: 'Unit test patches tool.fn to return empty first, non-empty second; "
+            "asserts all_file_changes is non-empty'\n"
+        ) + plugin_section
+
         self.prompt = ChatPromptTemplate.from_messages(
             [
-                (
-                    "system",
-                    (
-                        "You are a senior software engineer acting as a code-edit planner for the RepoMind AI agent.\n"
-                        "\n"
-                        "Your job is to decompose the user's instruction into an ordered list of CONCRETE implementation steps.\n"
-                        "Each step will be executed independently by a code-generation LLM that has NO memory of previous steps.\n"
-                        "Therefore every step must be 100 % self-contained and unambiguous.\n"
-                        "\n"
-                        "STRICT RULES:\n"
-                        "1. MAXIMUM {max_steps} steps. If the task needs more, find the minimal subset that achieves the goal.\n"
-                        "2. Every step MUST specify:\n"
-                        "   - target_files: exact file path(s) relative to the repo root, e.g. 'agent/executor.py'\n"
-                        "   - target_function: the exact function or class.method name to touch, e.g. 'StepExecutor.execute'\n"
-                        "   - new_logic: a precise, line-level description of what code to add/change/remove inside that function\n"
-                        "   - expected_output: a concrete observable result (not 'it works')\n"
-                        "   - acceptance_criteria: how a test or reviewer can confirm the step is done\n"
-                        "3. Prioritize repository intelligence from the project map: README.md, ARCHITECTURE.md, framework configs, dependency files, and entry points should be preferred over arbitrary source files when relevant.\n"
-                        "4. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
-                        "5. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
-                        "6. Steps must be ordered: if step B depends on step A, A must come first.\n"
-                        "7. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
-                        "\n"
-                        "BAD step (reject this pattern):\n"
-                        "  task: 'Improve the executor'\n"
-                        "  target_files: ['agent/']\n"
-                        "  new_logic: 'Make it better'\n"
-                        "\n"
-                        "GOOD step (follow this pattern):\n"
-                        "  task: 'Add retry logic to StepExecutor.execute when file_changes is empty'\n"
-                        "  target_files: ['agent/executor.py']\n"
-                        "  target_function: 'StepExecutor.execute'\n"
-                        '  new_logic: \'After tool.fn() returns payload, check if payload["file_changes"] is empty. '
-                        "If so, call tool.fn(decision.tool_input) a second time. Use the second result regardless.'\n"
-                        "  expected_output: 'execute() calls the tool twice when the first call returns no file_changes'\n"
-                        "  acceptance_criteria: 'Unit test patches tool.fn to return empty first, non-empty second; "
-                        "asserts all_file_changes is non-empty'\n"
-                    ),
-                ),
+                ("system", system_text),
                 (
                     "human",
                     (
                         "Conversation context (most recent {max_context_msgs} messages):\n{context}\n\n"
                         "Repository intelligence:\n{project_map}\n\n"
+                        "Code structure graph (functions, classes, call/inheritance relationships):\n{code_graph}\n\n"
+                        "Retrieved Semantic Code Context:\n{retrieved_code_context}\n\n"
+                        "Persistent Repository Memory:\n{semantic_memory}\n\n"
                         "User instruction:\n{instruction}\n\n"
                         "Return a plan with 1-based step ids. Maximum {max_steps} steps."
                     ),
@@ -145,6 +162,12 @@ class TaskPlanner:
             return "(no project map available)"
         return summarize_project_map(project_map)
 
+    def _code_graph_to_text(self, code_graph: CodeGraph | None) -> str:
+        """Serialize the code knowledge graph for the planner prompt."""
+        if code_graph is None:
+            return "(no code graph available)"
+        return summarize_code_graph(code_graph)
+
     def build_chain(self) -> Runnable:
         """Return the LangChain runnable for planning."""
         return self.prompt | self.llm.with_structured_output(Plan)
@@ -154,24 +177,60 @@ class TaskPlanner:
         instruction: str,
         context_messages: list,
         project_map: dict[str, Any] | None = None,
+        code_graph: CodeGraph | None = None,
+        semantic_memory: str | None = None,
+        retrieved_code_context: str | None = None,
     ) -> Plan:
         """
-        Produce a Plan from the user's instruction and session context.
+        Produce a Plan from the user's instruction, session context, and semantic memory.
 
         Args:
             instruction: The user's plain-English change request.
             context_messages: LangChain BaseMessage list from MemoryManager.
+            project_map: Optional structured project map.
+            semantic_memory: Formatted persistent repository semantic memory context.
+            retrieved_code_context: Formatted hybrid semantic code search context.
 
         Returns:
             A Plan with at most MAX_PLAN_STEPS steps, each fully specified.
         """
+        start_time = time.perf_counter()
+        logger.info(
+            "Generating execution plan",
+            extra={
+                "event": "planner_start",
+                "instruction_len": len(instruction),
+                "has_project_map": project_map is not None,
+                "has_code_graph": code_graph is not None,
+                "has_semantic_memory": bool(semantic_memory),
+                "has_code_context": bool(retrieved_code_context),
+                "context_msg_count": len(context_messages),
+            },
+        )
         chain = self.build_chain()
-        return chain.invoke(
+        generated_plan: Plan = chain.invoke(
             {
                 "instruction": instruction,
                 "context": self._context_to_text(context_messages),
                 "project_map": self._project_map_to_text(project_map),
+                "code_graph": self._code_graph_to_text(code_graph),
+                "semantic_memory": semantic_memory or "(no persistent memory available)",
+                "retrieved_code_context": retrieved_code_context or "(no code context retrieved)",
                 "max_steps": MAX_PLAN_STEPS,
                 "max_context_msgs": 12,
             }
         )
+
+        duration_sec = time.perf_counter() - start_time
+        metrics_collector.record_plan_generated(len(generated_plan.steps))
+        metrics_collector.record_duration("planner_duration_seconds", duration_sec)
+        logger.info(
+            "Execution plan generated successfully",
+            extra={
+                "event": "planner_complete",
+                "step_count": len(generated_plan.steps),
+                "duration_ms": round(duration_sec * 1000, 2),
+                "steps": [s.task for s in generated_plan.steps],
+            },
+        )
+        return generated_plan

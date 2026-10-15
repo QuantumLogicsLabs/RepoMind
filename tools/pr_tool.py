@@ -126,11 +126,50 @@ def build_pr_title(instruction: str, fallback: str = "chore: automated repositor
     return f"{commit_type}: {short}"
 
 
+def build_impact_file_reasons(
+    changed_files: Iterable[str],
+    impact_report: dict[str, dict] | None,
+) -> list[str]:
+    """
+    Turn an impact_report (from tools.code_parser.analyze_plan_impact) into
+    a list of per-file reason strings suitable for build_pr_body's file_reasons.
+
+    Each string states how many files depend on this one, and flags high-risk
+    edits (dependency/config files) so reviewers see it before merging.
+    """
+    impact_report = impact_report or {}
+    reasons: list[str] = []
+
+    for file_path in changed_files:
+        info = impact_report.get(file_path)
+        if not info:
+            reasons.append("No dependency impact detected.")
+            continue
+
+        affected = info.get("affected_files", [])
+        high_risk = info.get("high_risk", False)
+        risk_reason = info.get("risk_reason", "")
+
+        parts = []
+        if affected:
+            parts.append(f"Used by {len(affected)} file(s): {', '.join(affected)}.")
+        else:
+            parts.append("No other files import this one.")
+
+        if high_risk:
+            parts.append(f"⚠️ HIGH RISK: {risk_reason}")
+
+        reasons.append(" ".join(parts))
+
+    return reasons
+
+
 def build_pr_body(
     instruction: str,
     changed_files: Iterable[str],
     diff_summary: dict[str, str] | None = None,
     file_reasons: list[str] | None = None,
+    impact_report: dict[str, dict] | None = None,
 ) -> str:
     """
     Build a complete, reviewer-friendly PR body.
@@ -147,14 +186,24 @@ def build_pr_body(
         changed_files: Iterable of relative file paths.
         diff_summary:  {file_path: unified_diff_text} from generate_repo_diff.
         file_reasons:  Optional per-file reason strings (same order as changed_files).
+                       If not supplied and impact_report is given, this is
+                       auto-generated from the impact report instead.
+        impact_report: Optional impact analysis from
+                       tools.code_parser.analyze_plan_impact, used to
+                       auto-generate file_reasons when file_reasons is None.
 
     Returns:
         Formatted Markdown PR body string.
     """
+    changed_files = list(changed_files)
+
+    if file_reasons is None and impact_report:
+        file_reasons = build_impact_file_reasons(changed_files, impact_report)
+
     return build_pr_description(
         summary=instruction.strip() or "Automated code changes applied by RepoMind.",
         reason="Instruction provided by user through the HackingTheRepo platform.",
-        changed_files=list(changed_files),
+        changed_files=changed_files,
         diff_summary=diff_summary or {},
         file_reasons=file_reasons,
     )

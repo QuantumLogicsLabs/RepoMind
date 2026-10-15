@@ -1,6 +1,11 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
+
+logger = get_logger("api.errors")
+
 
 class InvalidRepoURLError(Exception):
     def __init__(self, url: str):
@@ -32,6 +37,15 @@ class AgentTimeoutError(Exception):
 
 
 async def invalid_repo_url_handler(request: Request, exc: InvalidRepoURLError):
+    logger.warning(
+        "Request failed - Invalid repo URL",
+        extra={
+            "event": "error_invalid_repo_url",
+            "url": exc.url,
+            "path": request.url.path,
+        },
+    )
+    metrics_collector.record_failure("InvalidRepoURLError", exc.url)
     return JSONResponse(
         status_code=400,
         content={
@@ -44,6 +58,14 @@ async def invalid_repo_url_handler(request: Request, exc: InvalidRepoURLError):
 
 
 async def invalid_instruction_handler(request: Request, exc: InvalidInstructionError):
+    logger.warning(
+        "Request failed - Invalid instruction",
+        extra={
+            "event": "error_invalid_instruction",
+            "path": request.url.path,
+        },
+    )
+    metrics_collector.record_failure("InvalidInstructionError", "Empty instruction")
     return JSONResponse(
         status_code=400,
         content={
@@ -56,6 +78,15 @@ async def invalid_instruction_handler(request: Request, exc: InvalidInstructionE
 
 
 async def job_already_running_handler(request: Request, exc: JobAlreadyRunningError):
+    logger.warning(
+        "Request failed - Job already running",
+        extra={
+            "event": "error_job_already_running",
+            "job_id": exc.job_id,
+            "path": request.url.path,
+        },
+    )
+    metrics_collector.record_failure("JobAlreadyRunningError", exc.job_id)
     return JSONResponse(
         status_code=409,
         content={
@@ -68,6 +99,15 @@ async def job_already_running_handler(request: Request, exc: JobAlreadyRunningEr
 
 
 async def job_not_found_handler(request: Request, exc: JobNotFoundError):
+    logger.warning(
+        "Request failed - Job not found",
+        extra={
+            "event": "error_job_not_found",
+            "job_id": exc.job_id,
+            "path": request.url.path,
+        },
+    )
+    metrics_collector.record_failure("JobNotFoundError", exc.job_id)
     return JSONResponse(
         status_code=404,
         content={
@@ -80,6 +120,15 @@ async def job_not_found_handler(request: Request, exc: JobNotFoundError):
 
 
 async def agent_timeout_handler(request: Request, exc: AgentTimeoutError):
+    logger.error(
+        "Job execution timed out",
+        extra={
+            "event": "error_agent_timeout",
+            "job_id": exc.job_id,
+            "path": request.url.path,
+        },
+    )
+    metrics_collector.record_failure("AgentTimeoutError", exc.job_id)
     return JSONResponse(
         status_code=408,
         content={
@@ -92,6 +141,17 @@ async def agent_timeout_handler(request: Request, exc: AgentTimeoutError):
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error(
+        "Unhandled exception diagnostic",
+        exc_info=exc,
+        extra={
+            "event": "unhandled_exception",
+            "path": request.url.path,
+            "method": request.method,
+            "exception_type": type(exc).__name__,
+        },
+    )
+    metrics_collector.record_failure("UnhandledException", str(exc))
     return JSONResponse(
         status_code=500,
         content={
