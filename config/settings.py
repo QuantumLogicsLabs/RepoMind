@@ -2,17 +2,12 @@
 
 Pydantic BaseSettings for RepoMind.
 
-<<<<<<< HEAD
-Groq is the only supported LLM backend. GROQ_API_KEY is required — startup
-will fail with a clear error if it is not set.
-=======
 Supports only Groq backend with API Key Rotation support.
 Multiple keys can be provided separated by commas to avoid 429 Rate Limits.
 
 Also provides small resolver helpers so request-scoped credentials (from
 api/schemas.RunRequest) can override the server's own defaults without
 ever being written back into Settings or logged.
->>>>>>> e302888f9afcdaf559fd9a4ee089b2ee812fd9fa
 """
 
 from __future__ import annotations
@@ -21,12 +16,8 @@ import os
 import threading
 from functools import lru_cache
 
-<<<<<<< HEAD
-from pydantic import field_validator
-=======
 from dotenv import load_dotenv
 from pydantic import SecretStr, model_validator
->>>>>>> e302888f9afcdaf559fd9a4ee089b2ee812fd9fa
 from pydantic_settings import BaseSettings
 
 # Load RepoMind/.env into the process environment. Must happen before
@@ -39,7 +30,7 @@ load_dotenv()
 class Settings(BaseSettings):
     # ── LLM — Groq ───────────────────────────────────────────────────────────
     groq_api_key: str
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_model: str = "openai/gpt-oss-120b"
 
     # ── Plan limits ───────────────────────────────────────────────────────────
     max_plan_steps: int = 10
@@ -64,15 +55,6 @@ class Settings(BaseSettings):
         env_file = ".env"
         extra = "ignore"
 
-<<<<<<< HEAD
-    @field_validator("groq_api_key")
-    @classmethod
-    def groq_key_not_blank(cls, v: str) -> str:
-        """Fail fast at startup if the Groq key is empty."""
-        if not v.strip():
-            raise ValueError("GROQ_API_KEY must be set")
-        return v
-=======
     @property
     def parsed_groq_keys(self) -> list[str]:
         """Parse comma-separated keys into a list for rotation."""
@@ -92,7 +74,6 @@ class Settings(BaseSettings):
     def active_llm_model(self) -> str:
         """Return the model name appropriate for the active backend."""
         return self.llm_model
->>>>>>> e302888f9afcdaf559fd9a4ee089b2ee812fd9fa
 
     @property
     def is_production(self) -> bool:

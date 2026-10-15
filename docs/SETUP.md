@@ -115,7 +115,7 @@ Open `.env` in your editor and fill in every value:
 ```env
 # ── LLM ──────────────────────────────────────────────────────────────────────
 GROQ_API_KEY=gsk_...            # Your Groq API key
-LLM_MODEL=llama-3.3-70b-versatile   # Any Groq-hosted model id
+LLM_MODEL=openai/gpt-oss-120b   # Any Groq-hosted model id
 MAX_PLAN_STEPS=15              # Max steps the planner will produce
 
 # ── GitHub ────────────────────────────────────────────────────────────────────

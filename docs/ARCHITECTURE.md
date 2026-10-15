@@ -276,7 +276,7 @@ All configuration is managed by `config/settings.py` using Pydantic `BaseSetting
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GROQ_API_KEY` | Yes | — | Groq LLM API key (primary LLM backend) |
-| `LLM_MODEL` | No | `llama-3.3-70b-versatile` | Model identifier |
+| `LLM_MODEL` | No | `openai/gpt-oss-120b` | Model identifier |
 | `MAX_PLAN_STEPS` | No | `15` | Max steps the planner will produce |
 | `GITHUB_TOKEN` | Yes | — | Fine-grained PAT with `repo` scope |
 | `GITHUB_USERNAME` | Yes | — | GitHub username for attribution |

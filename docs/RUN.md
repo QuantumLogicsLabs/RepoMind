@@ -76,12 +76,13 @@ Fill in `GROQ_API_KEY`, `GITHUB_TOKEN`, `GITHUB_USERNAME` (see `.env.example`). 
 uvicorn api.main:app --reload --port 8000
 ```
 
-| URL                            | What                   |
-| ------------------------------ | ---------------------- |
-| `http://localhost:8000`        | Service status         |
-| `http://localhost:8000/health` | Health check           |
-| `http://localhost:8000/docs`   | Swagger UI             |
-| `http://localhost:8000/redoc`  | ReDoc                  |
+
+| URL                            | What           |
+| -------------------------------- | ---------------- |
+| `http://localhost:8000`        | Service status |
+| `http://localhost:8000/health` | Health check   |
+| `http://localhost:8000/docs`   | Swagger UI     |
+| `http://localhost:8000/redoc`  | ReDoc          |
 
 ```powershell
 Start-Process http://localhost:8000/docs     # open Swagger in the browser
@@ -213,12 +214,13 @@ git submodule update --remote --merge
 
 ## 11. Troubleshooting quick fixes
 
-| Symptom                                | Fix                                                        |
-| -------------------------------------- | ---------------------------------------------------------- |
-| `repomind/` folder is empty            | `git submodule update --init --recursive repomind`         |
-| `ModuleNotFoundError`                  | Activate `.venv`, then `pip install -e ".[dev]"`           |
-| `externally-managed-environment`       | Use a venv; never `--break-system-packages`                |
-| Settings validation error              | `.env` must be in the project root, not inside `config/`   |
-| `tree-sitter` language errors          | `pip install tree-sitter-python`                           |
-| `Activate.ps1` blocked                 | `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
-| Port 8000 already in use               | Use `--port 8001` or kill the process (section 4)          |
+
+| Symptom                          | Fix                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `repomind/` folder is empty      | `git submodule update --init --recursive repomind`                     |
+| `ModuleNotFoundError`            | Activate `.venv`, then `pip install -e ".[dev]"`                       |
+| `externally-managed-environment` | Use a venv; never `--break-system-packages`                            |
+| Settings validation error        | `.env` must be in the project root, not inside `config/`               |
+| `tree-sitter` language errors    | `pip install tree-sitter-python`                                       |
+| `Activate.ps1` blocked           | `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
+| Port 8000 already in use         | Use `--port 8001` or kill the process (section 4)                      |

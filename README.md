@@ -160,7 +160,7 @@ Open `.env` and fill in the required values:
 GROQ_API_KEY=gsk_...
 GITHUB_TOKEN=ghp_...
 GITHUB_USERNAME=your-github-username
-LLM_MODEL=llama-3.3-70b-versatile
+LLM_MODEL=openai/gpt-oss-120b
 MAX_PLAN_STEPS=15
 LOG_LEVEL=INFO
 ```

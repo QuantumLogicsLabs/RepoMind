@@ -14,6 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from agent.coverage_analyzer import MissingTestRequirement
 from agent.test_schemas import TestAssertionSpec, TestCaseSpec, TestSuiteSpec
+from utils.llm import structured_output
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ class AutonomousTestGenerator:
 
         if self.llm is not None:
             try:
-                chain = self.prompt | self.llm.with_structured_output(TestSuiteSpec)
+                chain = self.prompt | structured_output(self.llm, TestSuiteSpec)
                 req_text = "\n".join(
                     [f"- {r.scenario_name}: {r.description}" for r in requirements]
                 )

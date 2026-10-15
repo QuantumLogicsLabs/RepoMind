@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from orchestration.messages import ReviewerMessage
 from orchestration.task_state import TaskState
+from utils.llm import structured_output
 from utils.logging import get_logger
 
 logger = get_logger("agent.reviewer")
@@ -96,7 +97,7 @@ class ReviewerAgent:
 
     def _invoke_chain(self, inputs: dict) -> ReviewDecision:
         """Build and invoke the LLM chain. Extracted for testability."""
-        chain = self.prompt | self.llm.with_structured_output(ReviewDecision)
+        chain = self.prompt | structured_output(self.llm, ReviewDecision)
         return cast(ReviewDecision, chain.invoke(inputs))
 
     # ── public API ────────────────────────────────────────────────────────────

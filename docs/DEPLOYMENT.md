@@ -114,7 +114,7 @@ Never store secrets in your Docker image or source code. Always inject them at r
 
 | Variable         | Default       | Description                            |
 | ---------------- | ------------- | -------------------------------------- |
-| `LLM_MODEL`      | `llama-3.3-70b-versatile` | Groq model to use                  |
+| `LLM_MODEL`      | `openai/gpt-oss-120b` | Groq model to use                  |
 | `MAX_PLAN_STEPS` | `15`          | Max steps the planner produces per job |
 | `APP_ENV`        | `development` | Set to `production` in prod            |
 | `LOG_LEVEL`      | `INFO`        | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
@@ -125,7 +125,7 @@ Never store secrets in your Docker image or source code. Always inject them at r
 GROQ_API_KEY=gsk_...
 GITHUB_TOKEN=ghp_...
 GITHUB_USERNAME=repomind-bot
-LLM_MODEL=llama-3.3-70b-versatile
+LLM_MODEL=openai/gpt-oss-120b
 MAX_PLAN_STEPS=15
 APP_ENV=production
 LOG_LEVEL=WARNING
